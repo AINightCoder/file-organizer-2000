@@ -20,6 +20,7 @@
     "@ai-sdk/amazon-bedrock": "^1.0.6",
     "@ai-sdk/anthropic": "^1.0.6",
     "@ai-sdk/openai": "^1.0.6",
+    "@ai-sdk/openai-compatible": "^0.0.13",
     "@browserbasehq/stagehand": "^1.5.0",
     "@clerk/nextjs": "^6.9.6",
     "@hookform/resolvers": "^3.9.1",

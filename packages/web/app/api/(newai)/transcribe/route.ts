@@ -23,7 +23,10 @@ export async function POST(request: Request) {
     const tempFilePath = join(tmpdir(), `upload_${Date.now()}.${extension}`);
     await fsPromises.writeFile(tempFilePath, base64Data, { encoding: "base64" });
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = new OpenAI({
+         baseURL: 'https://api.deepseek.com',
+         apiKey: process.env.OPENAI_API_KEY 
+        });
     
     const transcription = await openai.audio.transcriptions.create({
       file: fs.createReadStream(tempFilePath),

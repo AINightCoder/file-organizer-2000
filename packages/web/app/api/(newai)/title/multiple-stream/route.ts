@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     Remember, the goal is to create titles that are instantly informative and distinguishable from other documents.`;
 
     const result = await streamObject({
-      model: getModel(process.env.MODEL_NAME || 'gpt-4o-2024-08-06'),
+      model: getModel(process.env.MODEL_NAME || 'deepseek-chat'),
       
       schema: titleSchema,
       prompt,
