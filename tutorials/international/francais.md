@@ -20,7 +20,7 @@ Vous pouvez également activer le mode "debug" et l'ajouter à vos pièces joint
 
 Obsidian web clipper fonctionne parfaitement avec File Organizer 2000, il permet non seulement d'organiser automatiquement vos clips mais aussi de les formater !
 
-Il suffit d'installer [le web clipper]([url](https://obsidian.md/clipper)) et de le configurer pour sauvegarder vos fichiers dans _FileOrganizer2000/Inbox
+Il suffit d'installer [le web clipper]([url](https://obsidian.md/clipper)) et de le configurer pour sauvegarder vos fichiers dans .fileorganizer2000/Inbox
 
 Vous pouvez également le combiner avec "AI Templates" et formater automatiquement certains articles avec l'IA.
 

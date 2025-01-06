@@ -23,7 +23,7 @@ You can also enable "debug" mode and add it to your issue attachments. But be ca
 
 Obsidian web clipper works great with File Organizer 2000, it makes it easy to easily not only Organize your clips automatically. But also format them!
 
-Just install [the web clipper]([url](https://obsidian.md/clipper)) and configure it to save your files to _FileOrganizer2000/Inbox
+Just install [the web clipper]([url](https://obsidian.md/clipper)) and configure it to save your files to .fileorganizer2000/Inbox
 
 ![image](https://github.com/user-attachments/assets/8117cc17-4665-40ac-987f-191ae35e7484)
 

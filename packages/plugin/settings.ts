@@ -2,16 +2,16 @@ export class FileOrganizerSettings {
   API_KEY = "";
   isLicenseValid = false;
   useLogs = true;
-  defaultDestinationPath = "_FileOrganizer2000/Processed";
-  referencePath = "_FileOrganizer2000/References";
-  attachmentsPath = "_FileOrganizer2000/Processed/Attachments";
-  pathToWatch = "_FileOrganizer2000/Inbox";
-  logFolderPath = "_FileOrganizer2000/Logs";
-  backupFolderPath = "_FileOrganizer2000/Backups";
-  templatePaths = "_FileOrganizer2000/Templates";
-  fabricPaths = "_FileOrganizer2000/Fabric";
-  bypassedFilePath = "_FileOrganizer2000/Bypassed";
-  errorFilePath = "_FileOrganizer2000/Errors";
+  defaultDestinationPath = ".fileorganizer2000/Processed";
+  referencePath = ".fileorganizer2000/References";
+  attachmentsPath = ".fileorganizer2000/Processed/Attachments";
+  pathToWatch = ".fileorganizer2000/Inbox";
+  logFolderPath = ".fileorganizer2000/Logs";
+  backupFolderPath = ".fileorganizer2000/Backups";
+  templatePaths = ".fileorganizer2000/Templates";
+  fabricPaths = ".fileorganizer2000/Fabric";
+  bypassedFilePath = ".fileorganizer2000/Bypassed";
+  errorFilePath = ".fileorganizer2000/Errors";
 
   // inbox settings
   useSimilarTags = true;

@@ -22,7 +22,7 @@
 
 Obsidian web clipper отлично работает с File Organizer 2000, делая не только автоматическую организацию ваших вырезок, но и их форматирование простым!
 
-Просто установите [веб-клиппер]([url](https://obsidian.md/clipper)) и настройте его на сохранение файлов в _FileOrganizer2000/Inbox
+Просто установите [веб-клиппер]([url](https://obsidian.md/clipper)) и настройте его на сохранение файлов в .fileorganizer2000/Inbox
 
 ![image](https://github.com/user-attachments/assets/8117cc17-4665-40ac-987f-191ae35e7484)
 

@@ -57,7 +57,7 @@ Auto-organize with the AI Inbox.
 
 We recommend the AI Assistant view for more control. But the AI Inbox can be handy as well. Simply move any of your files to the "Inbox" folder and the plugin will automatically move it to the folder it belongs. Additional configuration can also be specified within the plugin settings (e.g. auto-tagging, auto-formatting).
 
-Move your unorganized files into `_FileOrganizer2000/Inbox`
+Move your unorganized files into `.fileorganizer2000/Inbox`
 
 ![image](https://github.com/different-ai/file-organizer-2000/assets/11430621/295038f0-170c-456e-8e0a-e89c31719b95)
 

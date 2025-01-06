@@ -18,7 +18,7 @@ export const BATCH_DELAY = 100; // ms
 export const MAX_BATCH_SIZE = 10;
 export const CACHE_TTL = 1000 * 60 * 60 * 24; // 24 hours
 export const MAX_LOG_SIZE = 100;
-export const ERROR_FOLDER = "_FileOrganizer2000/Error";
+export const ERROR_FOLDER = ".fileorganizer2000/Error";
 
 export const NOTIFICATION_DURATIONS = {
   CRITICAL: 10000, // 10 seconds
