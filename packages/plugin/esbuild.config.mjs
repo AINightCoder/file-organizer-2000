@@ -13,7 +13,8 @@ const prod = process.argv[2] === "production";
 const isGithubAction = process.env.GITHUB_ACTIONS === "true";
 
 // Determine output directory based on environment
-const outdir = isGithubAction ? "dist" : "../..";
+// const outdir = isGithubAction ? "dist" : "../..";
+const outdir = "dist";
 
 const context = await esbuild.context({
 	banner: {
