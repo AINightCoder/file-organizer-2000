@@ -746,28 +746,29 @@ export default class FileOrganizer extends Plugin {
   }
 
   async appendTag(file: TFile, tag: string) {
-    // Ensure the tag starts with a hash symbol
+    // 确保标签格式正确(以#开头)
     const formattedTag = sanitizeTag(tag);
 
-    // Get the file content and metadata
+    // 获取文件内容和元数据
     const fileContent = await this.app.vault.read(file);
     const metadata = this.app.metadataCache.getFileCache(file);
 
-    // Check if tag exists in frontmatter
+    // 检查frontmatter中是否已存在该标签
     const hasFrontmatterTag = metadata?.frontmatter?.tags?.includes(
       formattedTag.replace("#", "")
     );
 
-    // Check if tag exists in content (for inline tags)
+    // 检查内容中是否已存在该标签
     const hasInlineTag = fileContent.includes(formattedTag);
 
-    // If tag already exists, skip adding it
+    // 如果标签已存在则跳过
     if (hasFrontmatterTag || hasInlineTag) {
       return;
     }
 
-    // Append similar tags
+    // 根据设置决定添加方式
     if (this.settings.useSimilarTagsInFrontmatter) {
+      // 添加到frontmatter
       await this.appendToFrontMatter(
         file,
         "tags",
@@ -776,7 +777,24 @@ export default class FileOrganizer extends Plugin {
       return;
     }
 
-    await this.app.vault.append(file, `\n${formattedTag}`);
+    // 将内容分割成行
+    const lines = fileContent.split("\n");
+    
+    // 检查第一行是否为空或已有标签
+    if (lines.length === 0 || lines[0].trim() === "") {
+      // 如果文件为空或第一行为空,直接添加标签作为第一行
+      lines[0] = formattedTag;
+    } else if (lines[0].trim().startsWith("#")) {
+      // 如果第一行已有标签,在其后添加新标签
+      lines[0] = `${lines[0].trim()} ${formattedTag}`;
+    } else {
+      // 如果第一行不是标签,在其前插入新的标签行
+      lines.unshift(formattedTag);
+    }
+
+    // 重新组合内容并写入文件
+    const newContent = lines.join("\n");
+    await this.app.vault.modify(file, newContent);
   }
 
   async ensureAssistantView(): Promise<AssistantViewWrapper | null> {
