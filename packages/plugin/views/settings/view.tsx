@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { App, PluginSettingTab } from 'obsidian';
+import { App, PluginSettingTab, Setting } from 'obsidian';
 import FileOrganizer from '../../index';
 import { createRoot, Root } from 'react-dom/client';
 import { SettingsTabContent } from './main';

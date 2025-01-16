@@ -28,44 +28,31 @@ export const SimilarFolderBox: React.FC<SimilarFolderBoxProps> = ({
 
   const suggestFolders = React.useCallback(async () => {
     if (!file) return;
-    setSuggestions([]);
+
+    // 如果是手动模式且不是refreshKey触发的更新，则跳过
+    if (plugin.settings.isManualRefresh && !refreshKey) {
+      return;
+    }
+
     setLoading(true);
     setError(null);
-    // cut content length to only first 50k/4 chars 
-    const truncatedContent = content.slice(0, 50000);
+    setSuggestions([]);
+
     try {
-      const folderSuggestions = await plugin.recommendFolders(
-        truncatedContent,
-        file.path
-      );
-
-
-      // Get all valid folders
-      const validFolders = plugin.getAllUserFolders();
-
-      // Filter suggestions to only include existing folders or new folders
-      const filteredSuggestions = folderSuggestions.filter(
-        suggestion =>
-          suggestion.isNewFolder || validFolders.includes(suggestion.folder)
-      );
-
-      setSuggestions(filteredSuggestions);
+      const suggestions = await plugin.recommendFolders(content, file.basename);
+      setSuggestions(suggestions);
     } catch (err) {
       logger.error("Error fetching folders:", err);
-      const errorMessage =
-        typeof err === "object" && err !== null
-          ? err.error?.message || err.error || err.message || "Unknown error"
-          : String(err);
-
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setError(new Error(errorMessage));
     } finally {
       setLoading(false);
     }
-  }, [content, file, plugin]);
+  }, [file, plugin, refreshKey, plugin.settings.isManualRefresh]);
 
   React.useEffect(() => {
     suggestFolders();
-  }, [suggestFolders, refreshKey]);
+  }, [suggestFolders]);
 
   const handleRetry = () => {
     setRetryCount(prev => prev + 1);

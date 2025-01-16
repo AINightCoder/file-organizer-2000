@@ -37,13 +37,18 @@ export const RenameSuggestion: React.FC<RenameSuggestionProps> = ({
 
   const suggestTitles = React.useCallback(async () => {
     if (!file) return;
+
+    // 如果是手动模式且不是refreshKey触发的更新，则跳过
+    if (plugin.settings.isManualRefresh && !refreshKey) {
+      return;
+    }
+
     setSuggestions([]);
     setLoading(true);
     setError(null);
 
     try {
       const titles = await plugin.recommendName(content, file.name);
-      // remove current file name from suggestions
       const filteredTitles = titles.filter(title => title.title !== file.name);
       setSuggestions(filteredTitles);
     } catch (err) {
@@ -53,11 +58,11 @@ export const RenameSuggestion: React.FC<RenameSuggestionProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [file, plugin]);
+  }, [file, plugin, refreshKey, plugin.settings.isManualRefresh]);
 
   React.useEffect(() => {
     suggestTitles();
-  }, [suggestTitles, refreshKey]);
+  }, [suggestTitles]);
 
   const handleTitleApply = async (title: string) => {
     // if same title, do nothing

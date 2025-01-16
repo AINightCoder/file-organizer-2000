@@ -22,6 +22,9 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ plugin }) => {
   const [maxFormattingTokens, setMaxFormattingTokens] = useState(
     plugin.settings.maxFormattingTokens
   );
+  const [isManualRefresh, setIsManualRefresh] = useState(
+    plugin.settings.isManualRefresh
+  );
 
   const handleToggleChange = async (value: boolean) => {
     setEnableSelfHosting(value);
@@ -37,6 +40,17 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ plugin }) => {
 
   return (
     <div className="p-4 space-y-4">
+      <ToggleSetting
+        name="Manual Refresh Mode"
+        description="Only regenerate suggestions (tags, folders, titles) when manually refreshed. This can help reduce API calls and provide a more controlled experience."
+        value={isManualRefresh}
+        onChange={value => {
+          setIsManualRefresh(value);
+          plugin.settings.isManualRefresh = value;
+          plugin.saveSettings();
+        }}
+      />
+
       <ToggleSetting
         name="Fo2k File Logs"
         description="Allows you to keep track of the changes made by file Organizer."
