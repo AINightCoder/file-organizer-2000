@@ -3,8 +3,9 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createOllama } from "ollama-ai-provider";
 
-const DEFAULT_MODEL = "deepseek-chat";
+const DEFAULT_MODEL = process.env.DEFAULT_MODEL;
 // 创建 DeepSeek 客户端
 const deepseek = createOpenAICompatible({
   name: "deepseek",
@@ -14,8 +15,17 @@ const deepseek = createOpenAICompatible({
   },
 });
 
+// 创建 Ollama 客户端
+const ollama = createOllama({
+  // custom settings
+  baseURL: process.env.OLLAMA_BASE_URL || "http://192.168.1.177:11434/api",
+});
+
 const models = {
   "deepseek-chat": deepseek("deepseek-chat"),
+  "ollama-qwen2.5": ollama("qwen2.5:32b-instruct-q4_K_M"),
+  "ollama-llama3.2": ollama("llama3.2"),
+  "ollama-phi4": ollama("phi4"),
   "gpt-4o": createOpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   })("gpt-4o"),
@@ -139,7 +149,7 @@ const models = {
 //   }
 // };
 
-// // 只返回强制使用的模型
+// 只返回强制使用的模型
 // export const getAvailableModels = () => {
 //   return [FORCE_MODEL];
 // };

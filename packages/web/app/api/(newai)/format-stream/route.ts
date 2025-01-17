@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   try {
     const { userId } = await handleAuthorization(request);
     const { content, formattingInstruction } = await request.json();
-    const model = getModel(process.env.MODEL_NAME || "deepseek-chat");
+    const model = getModel(process.env.DEFAULT_MODEL);
 
     const result = await streamText({
       model,
