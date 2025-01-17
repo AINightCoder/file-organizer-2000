@@ -434,11 +434,17 @@ export default class FileOrganizer extends Plugin {
 
   async classifyContentV2(
     content: string,
-    classifications: string[]
+    classifications: string[],
+    refreshKey?: number
   ): Promise<string> {
+    if (this.settings.isManualRefresh && !refreshKey) {
+      return "";
+    }
+
     const serverUrl = this.getServerUrl();
     const cutoff = this.settings.contentCutoffChars;
     const trimmedContent = content.slice(0, cutoff);
+    
     const response = await fetch(`${serverUrl}/api/classify1`, {
       method: "POST",
       headers: {
@@ -452,7 +458,7 @@ export default class FileOrganizer extends Plugin {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(`Classification failed with status: ${response.status}`);
     }
 
     const { documentType } = await response.json();

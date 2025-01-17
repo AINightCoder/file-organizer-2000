@@ -89,6 +89,10 @@ export const FabricClassificationBox: React.FC<
       return;
     }
 
+    if (plugin.settings.isManualRefresh && !refreshKey) {
+      return;
+    }
+
     try {
       logMessage("Attempting auto-classification");
       const response = await fetch(`${plugin.getServerUrl()}/api/classify1`, {
@@ -121,14 +125,14 @@ export const FabricClassificationBox: React.FC<
       logger.error("Error in autoClassifyContent:", error);
       setErrorMessage(`Classification failed: ${(error as Error).message}`);
     }
-  }, [content, file, fabricPatterns, plugin]);
+  }, [content, file, fabricPatterns, plugin, refreshKey]);
 
   React.useEffect(() => {
     if (!content || !file) return;
     if (!fabricPatterns) return;
-    logMessage("autoClassifyContent", fabricPatterns);
+    
     autoClassifyContent();
-  }, [content, file, plugin, refreshKey, fabricPatterns]);
+  }, [refreshKey]);
 
   React.useEffect(() => {
     const fetchFabricPatternsEffect = async () => {

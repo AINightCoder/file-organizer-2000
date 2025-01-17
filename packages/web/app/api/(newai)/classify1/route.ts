@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     );
     // increment tokenUsage
     const tokens = response.usage.totalTokens;
-    console.log("incrementing token usage classify", userId, tokens);
+    console.log("incrementing token usage classify1", userId, tokens);
     await incrementAndLogTokenUsage(userId, tokens);
     const documentType = response.object.documentType;
     return NextResponse.json({ documentType });
