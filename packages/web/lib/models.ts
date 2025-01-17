@@ -72,14 +72,3 @@ export const getModel = (name?: string) => {
 export const getAvailableModels = () => {
   return [FORCE_MODEL];
 };
-
-// 导出配置供其他模块使用
-export const MODEL_SETTINGS = {
-  DEFAULT: FORCE_MODEL,
-  FALLBACK: FORCE_MODEL,
-  CURRENT: FORCE_MODEL,
-} as const;
-
-// 为了向后兼容，保留一些可能被其他地方使用的接口
-export const DEFAULT_MODEL = FORCE_MODEL;
-export const isModelAvailable = (name: string) => name === FORCE_MODEL;
