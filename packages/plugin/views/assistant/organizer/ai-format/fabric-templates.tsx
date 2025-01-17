@@ -85,11 +85,20 @@ export const FabricClassificationBox: React.FC<
    * Automatically classifies the content using the /api/classify1 endpoint.
    */
   const autoClassifyContent = React.useCallback(async () => {
+    logger.debug("Fabric autoClassifyContent called:", {
+      hasFile: !!file,
+      hasContent: !!content,
+      patternsCount: fabricPatterns.length,
+      refreshKey,
+      isManualRefresh: plugin.settings.isManualRefresh
+    });
+
     if (!content || !file || fabricPatterns.length === 0) {
       return;
     }
 
     if (plugin.settings.isManualRefresh && !refreshKey) {
+      logger.debug("Manual refresh mode, skipping classification");
       return;
     }
 
@@ -189,7 +198,7 @@ export const FabricClassificationBox: React.FC<
     };
 
     // Auto-classify when content or file changes
-  }, [content, file, plugin, refreshKey, patternsPath]);
+  }, [file, plugin, refreshKey, patternsPath]);
 
   /**
    * Handles applying the selected Fabric pattern.

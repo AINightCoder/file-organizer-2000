@@ -36,11 +36,23 @@ export const RenameSuggestion: React.FC<RenameSuggestionProps> = ({
   const [error, setError] = React.useState<Error | null>(null);
   const [hasInitialLoad, setHasInitialLoad] = React.useState(false);
 
+  // 保持原有的刷新逻辑
   const suggestTitles = React.useCallback(async () => {
+    logger.debug("Titles suggestTitles called:", {
+      hasFile: !!file,
+      refreshKey,
+      isManualRefresh: plugin.settings.isManualRefresh
+    });
+
     if (!file) return;
 
-    // 如果是手动模式，只在refreshKey变化时触发
     if (plugin.settings.isManualRefresh && !refreshKey) {
+      logger.debug("Manual refresh mode, resetting titles without fetching");
+        if(file){
+            setSuggestions([]);
+            setLoading(false);
+            setError(null);
+        }   
       return;
     }
 
@@ -59,7 +71,7 @@ export const RenameSuggestion: React.FC<RenameSuggestionProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [refreshKey]); // 只依赖refreshKey
+  }, [file,refreshKey]); // 只依赖 refreshKey
 
   React.useEffect(() => {
     suggestTitles();

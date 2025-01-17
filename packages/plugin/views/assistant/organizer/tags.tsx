@@ -36,12 +36,36 @@ export const SimilarTags: React.FC<SimilarTagsProps> = ({
   const [initialLoadComplete, setInitialLoadComplete] = React.useState(false);
   const [hasInitialLoad, setHasInitialLoad] = React.useState(false);
 
+//   React.useEffect(() => {
+//     if (!plugin.settings.isManualRefresh) {
+//         return;
+//     }
+
+//     setExistingTags([]);
+//     setNewTags([]);
+//     setLoading(false);
+//     setInitialLoadComplete(false);
+//   }, [file]);
+
   React.useEffect(() => {
     const fetchTags = async () => {
+      logger.debug("Tags fetchTags called:", {
+        hasFile: !!file,
+        hasContent: !!content,
+        refreshKey,
+        isManualRefresh: plugin.settings.isManualRefresh
+      });
+
       if (!file || !content) return;
       
-      // 如果是手动模式，只在refreshKey变化时触发
       if (plugin.settings.isManualRefresh && !refreshKey) {
+        logger.debug("Manual refresh mode, resetting tags without fetching");
+        if(file){
+            setExistingTags([]);
+            setNewTags([]);
+            setLoading(false);
+            setInitialLoadComplete(false);
+        }
         return;
       }
 
@@ -75,7 +99,7 @@ export const SimilarTags: React.FC<SimilarTagsProps> = ({
     };
 
     fetchTags();
-  }, [refreshKey]); // 只依赖refreshKey
+  }, [file, refreshKey]);
 
   const handleTagClick = (tag: string) => {
     plugin.appendTag(file!, tag);

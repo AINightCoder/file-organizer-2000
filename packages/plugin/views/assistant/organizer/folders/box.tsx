@@ -27,11 +27,23 @@ export const SimilarFolderBox: React.FC<SimilarFolderBoxProps> = ({
   const [retryCount, setRetryCount] = React.useState(0);
   const [hasInitialLoad, setHasInitialLoad] = React.useState(false);
 
+  // 保持原有的刷新逻辑
   const suggestFolders = React.useCallback(async () => {
+    logger.debug("Folders suggestFolders called:", {
+      hasFile: !!file,
+      refreshKey,
+      isManualRefresh: plugin.settings.isManualRefresh
+    });
+
     if (!file) return;
 
-    // 如果是手动模式，只在refreshKey变化时触发
     if (plugin.settings.isManualRefresh && !refreshKey) {
+      logger.debug("Manual refresh mode, resetting folders without fetching");
+        if(file){
+            setSuggestions([]);
+            setLoading(false);
+            setError(null);
+        }
       return;
     }
 
@@ -49,7 +61,7 @@ export const SimilarFolderBox: React.FC<SimilarFolderBoxProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [refreshKey]); // 只依赖refreshKey
+  }, [file,refreshKey]); // 只依赖 refreshKey
 
   React.useEffect(() => {
     suggestFolders();
