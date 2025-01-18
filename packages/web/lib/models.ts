@@ -6,7 +6,6 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createOllama } from "ollama-ai-provider";
 
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL;
-// 创建 DeepSeek 客户端
 const deepseek = createOpenAICompatible({
   name: "deepseek",
   baseURL: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com",
@@ -14,44 +13,40 @@ const deepseek = createOpenAICompatible({
     Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
   },
 });
-
-// 创建 Ollama 客户端
+const minimax = createOpenAICompatible({
+  name: "minimax",
+  baseURL: process.env.MINIMAX_BASE_URL || "https://api.minimax.chat/v1",
+  headers: {
+    Authorization: `Bearer ${process.env.MINIMAX_API_KEY}`,
+  },
+});
+const siliconflow = createOpenAICompatible({
+  name: "siliconflow",
+  baseURL: process.env.SILICONFLOW_BASE_URL || "https://api.siliconflow.cn/v1",
+  headers: {
+    Authorization: `Bearer ${process.env.SILICONFLOW_API_KEY}`,
+  },
+});
 const ollama = createOllama({
-  // custom settings
   baseURL: process.env.OLLAMA_BASE_URL || "http://192.168.1.177:11434/api",
 });
 
 const models = {
   "deepseek-chat": deepseek("deepseek-chat"),
-  "ollama-qwen2.5": ollama("qwen2.5:32b-instruct-q4_K_M"),
-  "ollama-llama3.2": ollama("llama3.2"),
-  "ollama-phi4": ollama("phi4"),
-  "gpt-4o": createOpenAI({
+  "minimax": minimax("minimax"),
+  "siliconflow": siliconflow("siliconflow"),
+  "ollama": ollama(process.env.OLLAMA_MODEL || "phi4"),
+  "openai": createOpenAI({
     apiKey: process.env.OPENAI_API_KEY,
-  })("gpt-4o"),
-  "gpt-4o-2024-08-06": createOpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  })("gpt-4o-2024-08-06"),
-  "gpt-4o-mini": createOpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  })("gpt-4o-mini"),
-  "claude-3-5-sonnet-20240620": createAnthropic({
+  })(process.env.OPENAI_MODEL || "gpt-4o"),
+  "anthropic": createAnthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
-  })("claude-3-5-sonnet-20240620"),
-  "claude-3-5-sonnet-20241022": createAnthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  })("claude-3-5-sonnet-20241022"),
-  "claude-3-5-haiku-20241022": createAnthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  })("claude-3-5-haiku-20241022"),
-  "gemini-2.0-flash-exp": createGoogleGenerativeAI({
+  })(process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620"),
+  "google": createGoogleGenerativeAI({
     apiKey: process.env.GOOGLE_API_KEY,
-  })("gemini-2.0-flash-exp", {
+  })(process.env.GOOGLE_MODEL || "gemini-2.0-flash-exp", {
     useSearchGrounding: true,
   }),
-  "gemini-1.5-pro-search": createGoogleGenerativeAI({
-    apiKey: process.env.GOOGLE_API_KEY,
-  })("gemini-1.5-pro"),
   // bedrock
   ...(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
     ? {
