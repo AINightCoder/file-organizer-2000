@@ -32,17 +32,17 @@ const ollama = createOllama({
 });
 
 const models = {
-  "deepseek-chat": deepseek("deepseek-chat"),
-  "minimax": minimax("minimax"),
-  "siliconflow": siliconflow("siliconflow"),
-  "ollama": ollama(process.env.OLLAMA_MODEL || "phi4"),
-  "openai": createOpenAI({
+  deepseek: deepseek(process.env.DEEPSEEK_MODEL || "deepseek-chat"),
+  minimax: minimax(process.env.MINIMAX_MODEL || "minimax"),
+  siliconflow: siliconflow(process.env.SILICONFLOW_MODEL || "siliconflow"),
+  ollama: ollama(process.env.OLLAMA_MODEL || "phi4"),
+  openai: createOpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   })(process.env.OPENAI_MODEL || "gpt-4o"),
-  "anthropic": createAnthropic({
+  anthropic: createAnthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
   })(process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620"),
-  "google": createGoogleGenerativeAI({
+  google: createGoogleGenerativeAI({
     apiKey: process.env.GOOGLE_API_KEY,
   })(process.env.GOOGLE_MODEL || "gemini-2.0-flash-exp", {
     useSearchGrounding: true,
@@ -50,39 +50,11 @@ const models = {
   // bedrock
   ...(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
     ? {
-        // Llama Models
-        "llama-3-3-70b": createAmazonBedrock({
+        aws: createAmazonBedrock({
           region: process.env.AWS_REGION || "us-west-2",
           accessKeyId: process.env.AWS_ACCESS_KEY_ID,
           secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-        })("meta.llama3-3-70b-instruct-v1:0"),
-        "llama-3-2-90b": createAmazonBedrock({
-          region: process.env.AWS_REGION || "us-west-2",
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-        })("meta.llama3-2-90b-instruct-v1:0"),
-        // Mistral Models
-        "mistral-large": createAmazonBedrock({
-          region: process.env.AWS_REGION || "us-west-2",
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-        })("mistral.mistral-large-2407-v1:0"),
-        "mixtral-8x7b": createAmazonBedrock({
-          region: process.env.AWS_REGION || "us-west-2",
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-        })("mistral.mixtral-8x7b-instruct-v0:1"),
-        // Anthropic Models
-        "anthropic.claude-3-5-sonnet-20240620-v1:0": createAmazonBedrock({
-          region: process.env.AWS_REGION || "us-west-2",
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-        })("anthropic.claude-3-5-sonnet-20240620-v1:0"),
-        "anthropic.claude-3-5-haiku-20241022-v1:0": createAmazonBedrock({
-          region: process.env.AWS_REGION || "us-west-2",
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-        })("anthropic.claude-3-5-haiku-20241022-v1:0"),
+        })(process.env.AWS_MODEL || "meta.llama3-3-70b-instruct-v1:0"),
       }
     : {}),
 };
