@@ -73,6 +73,8 @@ export const SimilarFolderBox: React.FC<SimilarFolderBoxProps> = ({
   };
 
   const handleFolderClick = async (folder: string) => {
+    // 把文件名中的':'替换为'：'
+    folder = folder.replace(':', '：');
     // if same folder, do nothing
     logMessage({ newFolder: folder, currentFolder: file?.parent?.path });
     if (folder === file?.parent?.path) return;
