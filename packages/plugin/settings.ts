@@ -35,6 +35,9 @@ export class FileOrganizerSettings {
   showLocalLLMInChat = false;
   customFolderInstructions = "";
   selectedModel: "gpt-4o" | "llama3.2" | "gemini-2.0-flash-exp" = "gpt-4o";
+  Model_BASE_URL="https://api.deepseek.com";
+  Model_API_KEY="sk-e4ad7f13f96747c38168a0cd8ec346f2";
+  Model_Name="deepseek";
   customModelName = "llama3.2";
   tagScoreThreshold = 70;
   formatBehavior: "override" | "newFile" = "override";

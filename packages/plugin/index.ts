@@ -44,6 +44,7 @@ import { initializeInboxQueue, Inbox } from "./inbox";
 import { validateFile } from "./utils";
 import { logger } from "./services/logger";
 import { addTextSelectionContext } from "./views/assistant/ai-chat/use-context-items";
+import { AIService } from "./services/ai_service";
 
 type TagCounts = {
   [key: string]: number;
@@ -90,6 +91,7 @@ interface TitleSuggestion {
 export default class FileOrganizer extends Plugin {
   public inbox: Inbox;
   settings: FileOrganizerSettings;
+  aiService: AIService;
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -699,25 +701,32 @@ export default class FileOrganizer extends Plugin {
     const cutoff = this.settings.contentCutoffChars;
     const trimmedContent = content.slice(0, cutoff);
 
-    const response = await fetch(`${this.getServerUrl()}/api/tags/v2`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.settings.API_KEY}`,
-      },
-      body: JSON.stringify({
+    // const response = await fetch(`${this.getServerUrl()}/api/tags/v2`, {
+    //   method: "POST",
+    //   headers: {
+    //     "Content-Type": "application/json",
+    //     Authorization: `Bearer ${this.settings.API_KEY}`,
+    //   },
+    //   body: JSON.stringify({
+    //     content: trimmedContent,
+    //     fileName: filePath,
+    //     existingTags,
+    //     customInstructions: this.settings.customTagInstructions,
+    //   }),
+    // });
+
+    // if (!response.ok) {
+    //   throw new Error(`HTTP error! status: ${response.status}`);
+    // }
+
+    // const { tags: suggestedTags } = await response.json();
+
+    const suggestedTags = await this.aiService.generateTags({
         content: trimmedContent,
         fileName: filePath,
         existingTags,
         customInstructions: this.settings.customTagInstructions,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const { tags: suggestedTags } = await response.json();
+      });
     return suggestedTags;
   }
 
@@ -894,6 +903,14 @@ export default class FileOrganizer extends Plugin {
         }
       },
     });
+
+    // Initialize AI service
+    this.aiService = new AIService({
+      modelName: this.settings.Model_Name || "deepseek",
+      apiKey: this.settings.Model_API_KEY,
+      debug: this.settings.debugMode,
+    });
+
   }
   async saveSettings() {
     await this.saveData(this.settings);

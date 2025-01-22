@@ -430,7 +430,7 @@ Error Handling
 
 AI SDK handles the following tool-call errors:
 	1.	NoSuchToolError: Tool not defined in the tools object.
-	2.	InvalidToolArgumentsError: Invalid arguments for the tool’s parameters.
+	2.	InvalidToolArgumentsError: Invalid arguments for the tool's parameters.
 	3.	ToolExecutionError: Error during tool execution.
 
 Handling Errors
@@ -486,3 +486,34 @@ type MyToolResult = CoreToolResultUnion<typeof myToolSet>;
 - When using seaborn styles in matplotlib, use 'seaborn-v0_8' instead of 'seaborn' as the style name due to recent seaborn version changes
 
 # Scratchpad
+
+## 当前任务分析
+1. 目标: 将web端的AI API迁移到plugin中
+2. 示例: 从tags/v2/route.ts开始作为样板
+3. 涉及文件:
+- packages/web/app/api/(newai)/tags/v2/route.ts (源)  
+- packages/plugin/services/ai_service.ts (目标)
+
+## 任务拆解
+[X] 1. 分析tags/v2 API的功能和依赖
+[X] 2. 在ai_service.ts中创建对应的服务类和方法
+[X] 3. 迁移类型定义
+[X] 4. 迁移核心业务逻辑
+[X] 5. 处理错误处理和日志
+[X] 6. 添加测试用例
+[X] 7. 更新plugin中的调用方式
+
+## 当前进度
+- 添加了单元测试
+- 更新了plugin中的调用方式
+- 完成了tags/v2的迁移
+- 下一步需要:
+  1. 迁移其他API endpoints
+  2. 添加更多测试场景
+  3. 添加集成测试
+
+## 设计决策
+1. 使用Jest进行单元测试
+2. 在plugin主类中集成AIService
+3. 保持与原有API相同的错误处理方式
+4. 使用依赖注入方式管理AIService实例
