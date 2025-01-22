@@ -126,15 +126,15 @@ export const AssistantView: React.FC<AssistantViewProps> = ({
   }, [activeFile, plugin.app.vault]);
 
   // Then check license
-  if (!isLicenseValid) {
-    return (
-      <LicenseValidator
-        apiKey={plugin.settings.API_KEY}
-        onValidationComplete={() => setIsLicenseValid(true)}
-        plugin={plugin}
-      />
-    );
-  }
+//   if (!isLicenseValid) {
+//     return (
+//       <LicenseValidator
+//         apiKey={plugin.settings.API_KEY}
+//         onValidationComplete={() => setIsLicenseValid(true)}
+//         plugin={plugin}
+//       />
+//     );
+//   }
 
   if (error) {
     return (

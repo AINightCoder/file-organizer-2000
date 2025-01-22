@@ -16,10 +16,10 @@ interface SettingsTabContentProps {
 }
 
 export const SettingsTabContent: React.FC<SettingsTabContentProps> = ({ plugin }) => {
-  const [activeTab, setActiveTab] = useState('General');
+  const [activeTab, setActiveTab] = useState('Advanced');
 
   const tabs: Tab[] = [
-    { name: 'General', component: GeneralTab },
+    // { name: 'General', component: GeneralTab },
     { name: 'Organization Preferences', component: CustomizationTab },
     { name: 'Vault Access', component: FileConfigTab },
     { name: 'Experiment', component: ExperimentTab },

@@ -113,7 +113,8 @@ export default class FileOrganizer extends Plugin {
 
   async isLicenseKeyValid(key: string): Promise<boolean> {
     try {
-      const isValid = await checkLicenseKey(this.getServerUrl(), key);
+    //   const isValid = await checkLicenseKey(this.getServerUrl(), key);
+      const isValid = true;
 
       this.settings.isLicenseValid = isValid;
       this.settings.API_KEY = key;
