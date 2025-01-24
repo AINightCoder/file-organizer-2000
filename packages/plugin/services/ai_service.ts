@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { logger } from "./logger";
 import { generateObject, LanguageModel } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createOllama } from "ollama-ai-provider";
 
 // Types
 export interface TagSuggestion {
@@ -23,6 +27,7 @@ export interface AIServiceConfig {
   modelName: string;
   apiKey: string;
   debug?: boolean;
+  baseURL?: string;
 }
 
 // Schema definitions
@@ -38,32 +43,91 @@ const tagsSchema = z.object({
 export class AIService {
   private config: AIServiceConfig;
   private model: LanguageModel;
+  private models: Record<string, LanguageModel>;
+  private initialized: boolean = false;
 
   constructor(config: AIServiceConfig) {
+    if (!config.apiKey) {
+      logger.error("No API key provided");
+    //   throw new Error("API key is required");
+    }
+
     this.config = config;
     if (config.debug) {
       logger.configure(true);
     }
-    this.initializeModel();
+
+    try {
+      this.initializeModels();
+      this.model = this.getModel(config.modelName);
+      this.initialized = true;
+      logger.info("AIService initialized with model:", config.modelName);
+    } catch (error) {
+      logger.error("Failed to initialize AIService:", error);
+      throw error;
+    }
   }
 
-  private initializeModel() {
-    // Initialize model based on config.modelName
-    switch (this.config.modelName) {
-      case "gpt-4":
-      case "gpt-4-turbo":
-      case "gpt-3.5-turbo":
-        this.model = openai(this.config.modelName);
-        break;
-      default:
-        throw new Error(`Unsupported model: ${this.config.modelName}`);
+  private initializeModels() {
+    const deepseek = createOpenAICompatible({
+      name: "deepseek",
+      baseURL: this.config.baseURL || "https://api.deepseek.com",
+      headers: {
+        Authorization: `Bearer ${this.config.apiKey}`,
+      },
+    });
+    const minimax = createOpenAICompatible({
+      name: "minimax",
+      baseURL: this.config.baseURL || "https://api.minimax.chat/v1",
+      headers: {
+        Authorization: `Bearer ${this.config.apiKey}`,
+      },
+    });
+    const siliconflow = createOpenAICompatible({
+      name: "siliconflow",
+      baseURL: this.config.baseURL || "https://api.siliconflow.cn/v1",
+      headers: {
+        Authorization: `Bearer ${this.config.apiKey}`,
+      },
+    });
+    const ollama = createOllama({
+      baseURL: this.config.baseURL || "http://192.168.1.177:11434/api",
+    });
+
+    this.models = {
+        "deepseek-chat": deepseek(process.env.DEEPSEEK_MODEL || "deepseek-chat"),
+        "minimax": minimax(process.env.MINIMAX_MODEL || "minimax"),
+        "siliconflow": siliconflow(process.env.SILICONFLOW_MODEL || "siliconflow"),
+        "ollama": ollama(process.env.OLLAMA_MODEL || "phi4"),
+        "openai": createOpenAI({apiKey: process.env.OPENAI_API_KEY,})(process.env.OPENAI_MODEL || "gpt-4o"),
+        "anthropic": createAnthropic({apiKey: process.env.ANTHROPIC_API_KEY,})(process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620"),
+        "google": createGoogleGenerativeAI({apiKey: process.env.GOOGLE_API_KEY,})(process.env.GOOGLE_MODEL || "gemini-2.0-flash-exp", {useSearchGrounding: true,}),
+    };
+  }
+
+  private getAvailableModels = () => {
+    return Object.keys(this.models);
+  };
+
+  private getModel(name: string): LanguageModel {
+    if (!this.models[name]) {
+      logger.warn(`Model ${name} not found, falling back to deepseek`);
+      return this.models["deepseek"];
     }
+    logger.info(`Using model ${name}`);
+    return this.models[name];
   }
 
   async generateTags(options: GenerateTagsOptions): Promise<TagSuggestion[]> {
     try {
       logger.info("Generating tags with options:", options);
       const { content, fileName, existingTags = [], customInstructions = "", count = 3 } = options;
+
+      // 验证输入
+      if (!content || !fileName) {
+        logger.error("Invalid input:", { content: !!content, fileName: !!fileName });
+        throw new Error("Content and fileName are required");
+      }
 
       const response = await generateObject({
         model: this.model,
@@ -85,6 +149,8 @@ export class AIService {
                 """`,
       });
 
+      logger.info("Raw AI response:", response);
+
       // Sort tags by score and format response
       const sortedTags: TagSuggestion[] = response.object.suggestedTags
         .sort((a, b) => b.score - a.score)
@@ -100,10 +166,7 @@ export class AIService {
 
     } catch (error) {
       logger.error("Error generating tags:", error);
-      if (error instanceof z.ZodError) {
-        throw new Error(`Invalid response format: ${error.message}`);
-      }
-      throw new Error(`Failed to generate tags: ${error.message}`);
+      throw error;
     }
   }
 }

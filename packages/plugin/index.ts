@@ -695,39 +695,36 @@ export default class FileOrganizer extends Plugin {
     content: string,
     filePath: string,
     existingTags: string[]
-  ): Promise<
-    Array<{ score: number; tag: string; reason: string; isNew: boolean }>
-  > {
-    const cutoff = this.settings.contentCutoffChars;
-    const trimmedContent = content.slice(0, cutoff);
+  ): Promise<Array<{ score: number; tag: string; reason: string; isNew: boolean }>> {
+    try {
+      // 验证AIService是否已初始化
+      if (!this.aiService) {
+        logger.error("AIService not initialized");
+        throw new Error("AIService not initialized");
+      }
 
-    // const response = await fetch(`${this.getServerUrl()}/api/tags/v2`, {
-    //   method: "POST",
-    //   headers: {
-    //     "Content-Type": "application/json",
-    //     Authorization: `Bearer ${this.settings.API_KEY}`,
-    //   },
-    //   body: JSON.stringify({
-    //     content: trimmedContent,
-    //     fileName: filePath,
-    //     existingTags,
-    //     customInstructions: this.settings.customTagInstructions,
-    //   }),
-    // });
+      const cutoff = this.settings.contentCutoffChars;
+      const trimmedContent = content.slice(0, cutoff);
 
-    // if (!response.ok) {
-    //   throw new Error(`HTTP error! status: ${response.status}`);
-    // }
-
-    // const { tags: suggestedTags } = await response.json();
-
-    const suggestedTags = await this.aiService.generateTags({
+      const suggestedTags = await this.aiService.generateTags({
         content: trimmedContent,
         fileName: filePath,
         existingTags,
         customInstructions: this.settings.customTagInstructions,
       });
-    return suggestedTags;
+      
+      logger.info("Generated tags:", suggestedTags);
+      
+      if (!suggestedTags || !Array.isArray(suggestedTags)) {
+        logger.error("Invalid tags response:", suggestedTags);
+        return [];
+      }
+      
+      return suggestedTags;
+    } catch (error) {
+      logger.error("Error generating tags:", error);
+      throw error;
+    }
   }
 
   async recommendFolders(
@@ -839,22 +836,62 @@ export default class FileOrganizer extends Plugin {
   }
 
   async onload() {
-    this.inbox = Inbox.initialize(this);
-    await this.initializePlugin();
-    logger.configure(this.settings.debugMode);
+    logger.info("FileOrganizer plugin loading...");
+    
+    try {
+      // 1. 加载设置
+      await this.loadSettings();
+      logger.info("Settings loaded:", this.settings);
+      logger.configure(this.settings.debugMode);
 
-    await this.saveSettings();
-    await ensureFolderExists(this.app, this.settings.logFolderPath);
+      // 2. 初始化基础功能
+      await this.initializePlugin();
+      logger.info("Plugin initialized");
 
-    initializeInboxQueue(this);
+      // 3. 初始化AIService
+      if (!this.settings.Model_API_KEY && !this.settings.API_KEY) {
+        logger.error("No API key found in settings");
+        throw new Error("API key is required");
+      }
 
-    // Initialize different features
-    initializeOrganizer(this);
-    initializeFileOrganizationCommands(this);
+      this.aiService = new AIService({
+        modelName: this.settings.Model_Name || "gpt-3.5-turbo",
+        apiKey: this.settings.Model_API_KEY || this.settings.API_KEY,
+        debug: this.settings.debugMode,
+        baseURL: this.settings.selfHostingURL,
+      });
+      
+      logger.info("AIService initialized successfully");
 
-    this.app.workspace.onLayoutReady(() => registerEventHandlers(this));
+      // 4. 初始化其他组件
+      this.inbox = Inbox.initialize(this);
+      await ensureFolderExists(this.app, this.settings.logFolderPath);
+      initializeInboxQueue(this);
+      initializeOrganizer(this);
+      initializeFileOrganizationCommands(this);
+
+      // 5. 注册事件
+      this.registerEvents();
+      
+      // 6. 添加命令
+      this.addPluginCommands();
+
+      logger.info("FileOrganizer plugin loaded successfully");
+    } catch (error) {
+      logger.error("Error during plugin initialization:", error);
+      new Notice(`Failed to initialize plugin: ${error.message}`);
+    }
+  }
+
+  private registerEvents() {
+    this.app.workspace.onLayoutReady(() => {
+      logger.info("Layout ready, registering event handlers");
+      registerEventHandlers(this);
+    });
     this.processBacklog();
+  }
 
+  private addPluginCommands() {
     this.addCommand({
       id: "open-organizer-tab",
       name: "Open Organizer Tab",
@@ -903,15 +940,8 @@ export default class FileOrganizer extends Plugin {
         }
       },
     });
-
-    // Initialize AI service
-    this.aiService = new AIService({
-      modelName: this.settings.Model_Name || "deepseek",
-      apiKey: this.settings.Model_API_KEY,
-      debug: this.settings.debugMode,
-    });
-
   }
+
   async saveSettings() {
     await this.saveData(this.settings);
   }
