@@ -858,7 +858,7 @@ export default class FileOrganizer extends Plugin {
         modelName: this.settings.Model_Name || "gpt-3.5-turbo",
         apiKey: this.settings.Model_API_KEY || this.settings.API_KEY,
         debug: this.settings.debugMode,
-        baseURL: this.settings.selfHostingURL,
+        baseURL: this.settings.Model_BASE_URL,
       });
       
       logger.info("AIService initialized successfully");

@@ -95,7 +95,7 @@ export class AIService {
     });
 
     this.models = {
-        "deepseek-chat": deepseek(process.env.DEEPSEEK_MODEL || "deepseek-chat"),
+        "deepseek": deepseek(process.env.DEEPSEEK_MODEL || "deepseek-chat"),
         "minimax": minimax(process.env.MINIMAX_MODEL || "minimax"),
         "siliconflow": siliconflow(process.env.SILICONFLOW_MODEL || "siliconflow"),
         "ollama": ollama(process.env.OLLAMA_MODEL || "phi4"),
@@ -129,6 +129,8 @@ export class AIService {
         throw new Error("Content and fileName are required");
       }
 
+      this.model = this.getModel(this.config.modelName);
+      logger.info(`Using model ${this.config.modelName} : ${this.model} from ${this.models}`);
       const response = await generateObject({
         model: this.model,
         schema: tagsSchema,

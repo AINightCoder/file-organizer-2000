@@ -12,17 +12,17 @@ class LoggerService {
 
   error(...messages: any[]) {
     if (!this.isEnabled) return;
-    console.error(...messages);
+    console.info(...messages);
   }
 
   warn(...messages: any[]) {
     if (!this.isEnabled) return;
-    console.warn(...messages);
+    console.info(...messages);
   }
 
   debug(...messages: any[]) {
     if (!this.isEnabled) return;
-    console.debug(...messages);
+    console.info(...messages);
   }
 
 
