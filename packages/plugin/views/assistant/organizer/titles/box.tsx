@@ -85,6 +85,7 @@ export const RenameSuggestion: React.FC<RenameSuggestionProps> = ({
 
     setLoading(true);
     try {
+      title = title.replace(':', '：');
       await plugin.moveFile(file, title, file.parent.path);
       new Notice(`Renamed to ${title}`);
     } catch (error) {
