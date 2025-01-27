@@ -731,31 +731,38 @@ export default class FileOrganizer extends Plugin {
     content: string,
     fileName: string
   ): Promise<FolderSuggestion[]> {
-    const customInstructions = this.settings.customFolderInstructions;
-    const cutoff = this.settings.contentCutoffChars;
-    const trimmedContent = content.slice(0, cutoff);
+    try {
+      // 验证AIService是否已初始化
+      if (!this.aiService) {
+        logger.error("AIService not initialized");
+        throw new Error("AIService not initialized");
+      }
 
-    const folders = this.getAllUserFolders();
-    const response = await fetch(`${this.getServerUrl()}/api/folders/v2`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.settings.API_KEY}`,
-      },
-      body: JSON.stringify({
+      const customInstructions = this.settings.customFolderInstructions;
+      const cutoff = this.settings.contentCutoffChars;
+      const trimmedContent = content.slice(0, cutoff);
+      const folders = this.getAllUserFolders();
+
+      const suggestedFolders = await this.aiService.generateFolder({
         content: trimmedContent,
-        fileName: fileName,
+        fileName,
         folders,
         customInstructions,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+        count: 3
+      });
+      
+      logger.info("Generated folders:", suggestedFolders);
+      
+      if (!suggestedFolders || !Array.isArray(suggestedFolders)) {
+        logger.error("Invalid folders response:", suggestedFolders);
+        return [];
+      }
+      
+      return suggestedFolders;
+    } catch (error) {
+      logger.error("Error generating folders:", error);
+      throw error;
     }
-
-    const { folders: suggestedFolders } = await response.json();
-    return suggestedFolders;
   }
 
   async appendTag(file: TFile, tag: string) {
@@ -1038,30 +1045,35 @@ export default class FileOrganizer extends Plugin {
   async recommendName(
     content: string,
     fileName: string
-  ): Promise<TitleSuggestion[]> {
-    // cutoff
-    const cutoff = this.settings.contentCutoffChars;
-    const trimmedContent = content.slice(0, cutoff);
+  ): Promise<Array<{ score: number; title: string; reason: string }>> {
+    try {
+      // 验证AIService是否已初始化
+      if (!this.aiService) {
+        logger.error("AIService not initialized");
+        throw new Error("AIService not initialized");
+      }
 
-    const customInstructions = this.settings.renameInstructions;
-    const response = await fetch(`${this.getServerUrl()}/api/title/v2`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.settings.API_KEY}`,
-      },
-      body: JSON.stringify({
+      const cutoff = this.settings.contentCutoffChars;
+      const trimmedContent = content.slice(0, cutoff);
+
+      const suggestedTitles = await this.aiService.generateTitle({
         content: trimmedContent,
-        fileName: fileName,
-        customInstructions,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+        fileName,
+        customInstructions: this.settings.renameInstructions,
+        count: 3
+      });
+      
+      logger.info("Generated titles:", suggestedTitles);
+      
+      if (!suggestedTitles || !Array.isArray(suggestedTitles)) {
+        logger.error("Invalid titles response:", suggestedTitles);
+        return [];
+      }
+      
+      return suggestedTitles;
+    } catch (error) {
+      logger.error("Error generating titles:", error);
+      throw error;
     }
-
-    const { titles } = await response.json();
-    return titles;
   }
 }

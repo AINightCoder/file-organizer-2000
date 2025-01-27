@@ -30,6 +30,36 @@ export interface AIServiceConfig {
   baseURL?: string;
 }
 
+// 添加Title相关的类型定义
+export interface TitleSuggestion {
+  score: number;
+  title: string;
+  reason: string;
+}
+
+export interface GenerateTitleOptions {
+  content: string;
+  fileName: string;
+  customInstructions?: string;
+  count?: number;
+}
+
+// 添加Folder相关的类型定义
+export interface FolderSuggestion {
+  score: number;
+  isNewFolder: boolean;
+  folder: string;
+  reason: string;
+}
+
+export interface GenerateFolderOptions {
+  content: string;
+  fileName: string;
+  folders: string[];
+  customInstructions?: string;
+  count?: number;
+}
+
 // Schema definitions
 const tagsSchema = z.object({
   suggestedTags: z.array(z.object({
@@ -38,6 +68,35 @@ const tagsSchema = z.object({
     tag: z.string(),
     reason: z.string(),
   }))
+});
+
+// 添加Title相关的Schema
+const shouldRenameSchema = z.object({
+  score: z.number().min(0).max(100),
+  shouldRename: z.boolean(),
+  reason: z.string(),
+});
+
+const titleSchema = z.object({
+  suggestedTitles: z.array(
+    z.object({
+      score: z.number().min(0).max(100),
+      title: z.string(),
+      reason: z.string(),
+    })
+  ).min(1),
+});
+
+// 添加Folder相关的Schema
+const folderSchema = z.object({
+  suggestedFolders: z.array(
+    z.object({
+      score: z.number().min(0).max(100),
+      isNewFolder: z.boolean(),
+      folder: z.string(),
+      reason: z.string(),
+    })
+  ).min(1),
 });
 
 export class AIService {
@@ -169,6 +228,118 @@ export class AIService {
     } catch (error) {
       logger.error("Error generating tags:", error);
       throw error;
+    }
+  }
+
+  async generateTitle(options: GenerateTitleOptions): Promise<TitleSuggestion[]> {
+    try {
+      logger.info("Generating title with options:", options);
+      const { content, fileName, customInstructions = "", count = 3 } = options;
+
+      // 验证输入
+      if (!content || !fileName) {
+        logger.error("Invalid input:", { content: !!content, fileName: !!fileName });
+        throw new Error("Content and fileName are required");
+      }
+
+      // 1. 首先检查是否需要重命名
+      const shouldRename = await generateObject({
+        model: this.model,
+        schema: shouldRenameSchema,
+        prompt: `Given the content and file name: "${fileName}", should we rename the file? Content: "${content}", based on ${customInstructions}`,
+      });
+
+      logger.info("Should rename check:", shouldRename.object);
+
+      // 如果不需要重命名，返回原文件名
+      if (!shouldRename.object.shouldRename) {
+        return [{
+          score: shouldRename.object.score,
+          title: fileName,
+          reason: shouldRename.object.reason,
+        }];
+      }
+
+      // 2. 生成新的标题建议
+      const response = await generateObject({
+        model: this.model,
+        schema: titleSchema,
+        system: `Given the content and file name: "${fileName}", suggest exactly ${count} clear titles. Avoid special characters. ${
+          customInstructions ? `Instructions: "${customInstructions}"` : ""
+        }`,
+        prompt: `Content: "${content}"`,
+      });
+
+      logger.info("Raw AI response:", response);
+
+      // 处理并排序标题建议
+      const sortedTitles = response.object.suggestedTitles
+        .sort((a, b) => b.score - a.score)
+        .map(title => ({
+          score: title.score,
+          title: title.title,
+          reason: title.reason
+        }));
+
+      logger.info("Generated titles:", sortedTitles);
+      return sortedTitles;
+
+    } catch (error) {
+      logger.error("Error generating title:", error);
+      if (error instanceof z.ZodError) {
+        throw new Error(`Invalid response format: ${error.message}`);
+      }
+      throw new Error(`Failed to generate title: ${error.message}`);
+    }
+  }
+
+  async generateFolder(options: GenerateFolderOptions): Promise<FolderSuggestion[]> {
+    try {
+      logger.info("Generating folder suggestions with options:", options);
+      const { content, fileName, folders, customInstructions = "", count = 3 } = options;
+
+      // 验证输入
+      if (!content || !fileName || !Array.isArray(folders)) {
+        logger.error("Invalid input:", { 
+          content: !!content, 
+          fileName: !!fileName,
+          folders: Array.isArray(folders)
+        });
+        throw new Error("Content, fileName and folders array are required");
+      }
+
+      const response = await generateObject({
+        model: this.model,
+        schema: folderSchema,
+        system: `Given the content and file name: "${fileName}", suggest exactly ${count} folders. You can use: ${folders.join(
+          ", "
+        )}. If none are relevant, suggest new folders. ${
+          customInstructions ? `Instructions: "${customInstructions}"` : ""
+        }`,
+        prompt: `Content: "${content}"`,
+      });
+
+      logger.info("Raw AI response:", response);
+
+      // 处理并排序文件夹建议
+      const sortedFolders = response.object.suggestedFolders
+        .sort((a, b) => b.score - a.score)
+        .map(folder => ({
+          score: folder.score,
+          isNewFolder: folder.isNewFolder,
+          folder: folder.folder,
+          reason: folder.reason
+        }));
+
+      logger.info("Generated folder suggestions:", sortedFolders);
+      return sortedFolders;
+
+    } catch (error) {
+      logger.error("Error generating folder suggestions:", error);
+      if (error instanceof z.ZodError) {
+        throw new Error(`Invalid response format: ${error.message}`);
+      }
+      throw new Error(`Failed to generate folder suggestions: ${error.message}`);
     }
   }
 }
