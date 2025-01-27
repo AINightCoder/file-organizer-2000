@@ -14,7 +14,9 @@ const isGithubAction = process.env.GITHUB_ACTIONS === "true";
 
 // Determine output directory based on environment
 // const outdir = isGithubAction ? "dist" : "../..";
-const outdir = "dist";
+// const outdir = "dist";
+// const outdir = "D:/tmp/web";
+const outdir = "D:/Git/Note/note_obsidian/.obsidian/plugins/fileorganizer2000";
 
 const context = await esbuild.context({
 	banner: {
