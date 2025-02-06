@@ -861,13 +861,15 @@ export default class FileOrganizer extends Plugin {
         throw new Error("API key is required");
       }
 
-      this.aiService = new AIService({
-        modelName: this.settings.Model_Name || "gpt-3.5-turbo",
-        apiKey: this.settings.Model_API_KEY || this.settings.API_KEY,
-        debug: this.settings.debugMode,
-        baseURL: this.settings.Model_BASE_URL,
-      });
+      this.aiService = new AIService(this.settings);
       
+    //   this.aiService = new AIService({
+    //     modelName: this.settings.Model_Name || "gpt-3.5-turbo",
+    //     apiKey: this.settings.Model_API_KEY || this.settings.API_KEY,
+    //     debug: this.settings.debugMode,
+    //     baseURL: this.settings.Model_BASE_URL,
+    //   });
+
       logger.info("AIService initialized successfully");
 
       // 4. 初始化其他组件

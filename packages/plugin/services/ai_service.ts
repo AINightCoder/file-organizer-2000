@@ -6,6 +6,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createOllama } from "ollama-ai-provider";
+import { FileOrganizerSettings } from "../settings";
 
 // Types
 export interface TagSuggestion {
@@ -100,27 +101,22 @@ const folderSchema = z.object({
 });
 
 export class AIService {
-  private config: AIServiceConfig;
+  private config: FileOrganizerSettings;
   private model: LanguageModel;
   private models: Record<string, LanguageModel>;
   private initialized: boolean = false;
 
-  constructor(config: AIServiceConfig) {
-    if (!config.apiKey) {
-      logger.error("No API key provided");
-    //   throw new Error("API key is required");
-    }
-
+  constructor(config: FileOrganizerSettings) {
     this.config = config;
-    if (config.debug) {
+    if (config.debugMode) {
       logger.configure(true);
     }
 
     try {
       this.initializeModels();
-      this.model = this.getModel(config.modelName);
+      this.model = this.getModel(config.DEFAULT_MODEL);
       this.initialized = true;
-      logger.info("AIService initialized with model:", config.modelName);
+      logger.info("AIService initialized with model:", config.DEFAULT_MODEL);
     } catch (error) {
       logger.error("Failed to initialize AIService:", error);
       throw error;
@@ -130,37 +126,37 @@ export class AIService {
   private initializeModels() {
     const deepseek = createOpenAICompatible({
       name: "deepseek",
-      baseURL: this.config.baseURL || "https://api.deepseek.com",
+      baseURL: this.config.DEEPSEEK_BASE_URL || "https://api.deepseek.com",
       headers: {
-        Authorization: `Bearer ${this.config.apiKey}`,
+        Authorization: `Bearer ${this.config.DEEPSEEK_API_KEY}`,
       },
     });
     const minimax = createOpenAICompatible({
       name: "minimax",
-      baseURL: this.config.baseURL || "https://api.minimax.chat/v1",
+      baseURL: this.config.MINIMAX_BASE_URL || "https://api.minimax.chat/v1",
       headers: {
-        Authorization: `Bearer ${this.config.apiKey}`,
+        Authorization: `Bearer ${this.config.MINIMAX_API_KEY}`,
       },
     });
     const siliconflow = createOpenAICompatible({
       name: "siliconflow",
-      baseURL: this.config.baseURL || "https://api.siliconflow.cn/v1",
+      baseURL: this.config.SILICONFLOW_BASE_URL || "https://api.siliconflow.cn/v1",
       headers: {
-        Authorization: `Bearer ${this.config.apiKey}`,
+        Authorization: `Bearer ${this.config.SILICONFLOW_API_KEY}`,
       },
     });
     const ollama = createOllama({
-      baseURL: this.config.baseURL || "http://192.168.1.177:11434/api",
+      baseURL: this.config.OLLAMA_BASE_URL || "http://192.168.1.177:11434/api",
     });
 
     this.models = {
-        "deepseek": deepseek(process.env.DEEPSEEK_MODEL || "deepseek-chat"),
-        "minimax": minimax(process.env.MINIMAX_MODEL || "minimax"),
-        "siliconflow": siliconflow(process.env.SILICONFLOW_MODEL || "siliconflow"),
-        "ollama": ollama(process.env.OLLAMA_MODEL || "phi4"),
-        "openai": createOpenAI({apiKey: process.env.OPENAI_API_KEY,})(process.env.OPENAI_MODEL || "gpt-4o"),
-        "anthropic": createAnthropic({apiKey: process.env.ANTHROPIC_API_KEY,})(process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620"),
-        "google": createGoogleGenerativeAI({apiKey: process.env.GOOGLE_API_KEY,})(process.env.GOOGLE_MODEL || "gemini-2.0-flash-exp", {useSearchGrounding: true,}),
+        "deepseek": deepseek(this.config.DEEPSEEK_MODEL || "deepseek-chat"),
+        "minimax": minimax(this.config.MINIMAX_MODEL || "minimax"),
+        "siliconflow": siliconflow(this.config.SILICONFLOW_MODEL || "siliconflow"),
+        "ollama": ollama(this.config.OLLAMA_MODEL || "phi4"),
+        "openai": createOpenAI({apiKey: this.config.OPENAI_API_KEY,})(this.config.OPENAI_MODEL || "gpt-4o"),
+        "anthropic": createAnthropic({apiKey: this.config.ANTHROPIC_API_KEY,})(this.config.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620"),
+        "google": createGoogleGenerativeAI({apiKey: this.config.GOOGLE_API_KEY,})(this.config.GOOGLE_MODEL || "gemini-2.0-flash-exp", {useSearchGrounding: true,}),
     };
   }
 
@@ -188,8 +184,8 @@ export class AIService {
         throw new Error("Content and fileName are required");
       }
 
-      this.model = this.getModel(this.config.modelName);
-      logger.info(`Using model ${this.config.modelName} : ${this.model} from ${this.models}`);
+      this.model = this.getModel(this.config.DEFAULT_MODEL);
+      logger.info(`Using model ${this.config.DEFAULT_MODEL} : ${this.model} from ${this.models}`);
       const response = await generateObject({
         model: this.model,
         schema: tagsSchema,
