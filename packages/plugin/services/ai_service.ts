@@ -144,6 +144,45 @@ export class AIService {
       headers: {
         Authorization: `Bearer ${this.config.SILICONFLOW_API_KEY}`,
       },
+      fetch: (url, options) => {
+        console.log("Fetching URL:", url);
+        console.log("Fetching Options:", options);
+        // 发送请求并返回响应
+        return fetch(url, options)
+        .then(response => {
+            return response.json().then(data => {
+                // 在此处添加自定义的响应处理逻辑
+                // 例如，处理响应数据、错误处理等
+                console.log("Custom fetch Response:", data);
+                
+                // 获取原始的 arguments 字符串
+                let rawArguments = data.choices[0].message.tool_calls[0].function.arguments;
+                // 使用正则表达式匹配并提取 JSON 字符串
+                const match = rawArguments.match(/```json(.*)```/);
+                if (match && match[1]) {
+                    // 提取的 JSON 字符串
+                    rawArguments = match[1];
+                }
+                // 创建新的响应对象，使用修改后的数据
+                data.choices[0].message.tool_calls[0].function.arguments = rawArguments;
+                console.log("Final Raw Arguments:", data.choices[0].message.tool_calls[0].function.arguments);
+                // 返回一个新的response, 数据为修改后的data
+                const modifiedResponse = new Response(JSON.stringify(data), {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: response.headers
+                });
+
+                // 返回新的响应对象
+                return modifiedResponse;
+            });
+        })
+        .catch(error => {
+            // 处理请求或响应中的错误
+            console.error('请求错误:', error);
+            throw error;
+        });
+      },
     });
     const ollama = createOllama({
       baseURL: this.config.OLLAMA_BASE_URL || "http://192.168.1.177:11434/api",
