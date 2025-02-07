@@ -1,5 +1,5 @@
 class LoggerService {
-  private isEnabled = false;
+  private isEnabled = true;
 
   configure(enabled: boolean) {
     this.isEnabled = enabled;
