@@ -277,23 +277,23 @@ export class AIService {
         throw new Error("Content and fileName are required");
       }
 
-      // 1. 首先检查是否需要重命名
-      const shouldRename = await generateObject({
-        model: this.model,
-        schema: shouldRenameSchema,
-        prompt: `Given the content and file name: "${fileName}", should we rename the file? Content: "${content}", based on ${customInstructions}`,
-      });
+    //   // 1. 首先检查是否需要重命名
+    //   const shouldRename = await generateObject({
+    //     model: this.model,
+    //     schema: shouldRenameSchema,
+    //     prompt: `Given the content and file name: "${fileName}", should we rename the file? Content: "${content}", based on ${customInstructions}`,
+    //   });
 
-      logger.info("Should rename check:", shouldRename.object);
+    //   logger.info("Should rename check:", shouldRename.object);
 
-      // 如果不需要重命名，返回原文件名
-      if (!shouldRename.object.shouldRename) {
-        return [{
-          score: shouldRename.object.score,
-          title: fileName,
-          reason: shouldRename.object.reason,
-        }];
-      }
+    //   // 如果不需要重命名，返回原文件名
+    //   if (!shouldRename.object.shouldRename) {
+    //     return [{
+    //       score: shouldRename.object.score,
+    //       title: fileName,
+    //       reason: shouldRename.object.reason,
+    //     }];
+    //   }
 
       // 2. 生成新的标题建议
       const response = await generateObject({
