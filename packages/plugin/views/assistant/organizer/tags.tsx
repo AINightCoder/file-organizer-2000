@@ -47,19 +47,26 @@ export const SimilarTags: React.FC<SimilarTagsProps> = ({
 //     setInitialLoadComplete(false);
 //   }, [file]);
 
+  // 添加 ref 来追踪 refreshKey 的变化
+  const prevRefreshKeyRef = React.useRef(refreshKey);
+
   React.useEffect(() => {
     const fetchTags = async () => {
+      const isRefreshTriggered = prevRefreshKeyRef.current !== refreshKey;
+      
       logger.debug("Tags fetchTags called:", {
         hasFile: !!file,
         hasContent: !!content,
         refreshKey,
+        prevRefreshKey: prevRefreshKeyRef.current,
+        isRefreshTriggered,
         isManualRefresh: plugin.settings.isManualRefresh
       });
 
       if (!file || !content) return;
       
-      logger.debug(`Manual refresh mode: ${plugin.settings.isManualRefresh}, resetting tags, refreshKey: ${refreshKey}`);
-      if (plugin.settings.isManualRefresh && !refreshKey) {
+      // 改为判断是否由刷新触发
+      if (plugin.settings.isManualRefresh && !isRefreshTriggered) {
         if(file){
             setExistingTags([]);
             setNewTags([]);
@@ -99,6 +106,9 @@ export const SimilarTags: React.FC<SimilarTagsProps> = ({
     };
 
     fetchTags();
+    
+    // 更新 ref 的值
+    prevRefreshKeyRef.current = refreshKey;
   }, [file, refreshKey]);
 
   const handleTagClick = (tag: string) => {
