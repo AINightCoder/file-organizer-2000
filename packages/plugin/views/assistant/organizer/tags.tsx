@@ -58,8 +58,8 @@ export const SimilarTags: React.FC<SimilarTagsProps> = ({
 
       if (!file || !content) return;
       
+      logger.debug(`Manual refresh mode: ${plugin.settings.isManualRefresh}, resetting tags, refreshKey: ${refreshKey}`);
       if (plugin.settings.isManualRefresh && !refreshKey) {
-        logger.debug("Manual refresh mode, resetting tags without fetching");
         if(file){
             setExistingTags([]);
             setNewTags([]);

@@ -96,6 +96,7 @@ export const AssistantView: React.FC<AssistantViewProps> = ({
   }, [updateActiveFile, plugin.app.workspace]);
 
   const refreshContext = React.useCallback(() => {
+    console.log("refreshContext called");
     setRefreshKey(prevKey => prevKey + 1);
     setError(null);
     updateActiveFile();
