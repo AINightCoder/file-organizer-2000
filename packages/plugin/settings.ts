@@ -41,7 +41,7 @@ export class FileOrganizerSettings {
   Model_Name="deepseek";
   customModelName = "llama3.2";
 
-  DEFAULT_MODEL="siliconflow";
+  DEFAULT_MODEL="google";
   
   DEEPSEEK_BASE_URL="https://api.deepseek.com";
   DEEPSEEK_API_KEY="sk-e4ad7f13f96747c38168a0cd8ec346f2";
@@ -75,8 +75,8 @@ export class FileOrganizerSettings {
   // ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
   // ANTHROPIC_MODEL=claude-3-5-haiku-20241022
 
-  GOOGLE_API_KEY="";
-  GOOGLE_MODEL="gemini-2.0-flash-exp";
+  GOOGLE_API_KEY="AIzaSyDgEEWTvaopxXSOw2m8hbKE6iKIpjgXFZQ";
+  GOOGLE_MODEL="gemini-2.0-flash";
   // GOOGLE_MODEL=gemini-1.5-pro
 
   tagScoreThreshold = 70;
