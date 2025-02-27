@@ -804,12 +804,19 @@ export default class FileOrganizer extends Plugin {
     if (lines.length === 0 || lines[0].trim() === "") {
       // 如果文件为空或第一行为空,直接添加标签作为第一行
       lines[0] = formattedTag;
-    } else if (lines[0].trim().startsWith("#")) {
-      // 如果第一行已有标签,在其后添加新标签
-      lines[0] = `${lines[0].trim()} ${formattedTag}`;
     } else {
-      // 如果第一行不是标签,在其前插入新的标签行
-      lines.unshift(formattedTag);
+      // 检查第一行是否全部都是标签格式
+      const firstLine = lines[0].trim();
+      const tags = firstLine.split(' ').filter(Boolean); // 分割并过滤空字符串
+      const isAllTags = tags.every(tag => /^#[\w\u4e00-\u9fa5-]+$/.test(tag)); // 检查每个部分是否都是标签格式
+
+      if (isAllTags && tags.length > 0) {
+        // 如果第一行全部都是标签格式,在其后添加新标签
+        lines[0] = `${firstLine} ${formattedTag}`;
+      } else {
+        // 如果第一行包含非标签内容,在其前插入新的标签行
+        lines.unshift(formattedTag);
+      }
     }
 
     // 重新组合内容并写入文件
