@@ -187,6 +187,14 @@ export class AIService {
     const ollama = createOllama({
       baseURL: this.config.OLLAMA_BASE_URL || "http://192.168.1.177:11434/api",
     });
+    // 修改后的 Google 配置，使用 createOpenAICompatible
+    const google = createOpenAICompatible({
+        name: "google",
+        baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/", // Google Gemini API 的基础 URL
+        headers: {
+        Authorization: `Bearer ${this.config.GOOGLE_API_KEY || "AIzaSyDgEEWTvaopxXSOw2m8hbKE6iKIpjgXFQ"}`,
+        },
+    });
 
     this.models = {
         "deepseek": deepseek(this.config.DEEPSEEK_MODEL || "deepseek-chat"),
@@ -195,7 +203,7 @@ export class AIService {
         "ollama": ollama(this.config.OLLAMA_MODEL || "phi4"),
         "openai": createOpenAI({apiKey: this.config.OPENAI_API_KEY,})(this.config.OPENAI_MODEL || "gpt-4o"),
         "anthropic": createAnthropic({apiKey: this.config.ANTHROPIC_API_KEY,})(this.config.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620"),
-        "google": createGoogleGenerativeAI({apiKey: this.config.GOOGLE_API_KEY,})(this.config.GOOGLE_MODEL || "gemini-2.0-flash-exp", {useSearchGrounding: true,}),
+        "google": google(this.config.GOOGLE_MODEL || "gemini-2.0-flash"), 
     };
   }
 
