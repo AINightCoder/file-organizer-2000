@@ -6,11 +6,10 @@ import FileOrganizer from "../..";
 import { InboxLogs } from "./inbox-logs";
 import { SectionHeader } from "./section-header";
 import { AppContext } from "./provider";
-import AIChatSidebar from "./ai-chat/container";
 
 export const ORGANIZER_VIEW_TYPE = "fo2k.assistant.sidebar2";
 
-type Tab = "organizer" | "inbox" | "chat";
+type Tab = "organizer" | "inbox";
 
 function TabContent({
   activeTab,
@@ -38,14 +37,6 @@ function TabContent({
       >
         <SectionHeader text="Inbox Processing" icon="📥 " />
         <InboxLogs />
-      </div>
-
-      <div
-        className={`absolute inset-0 ${
-          activeTab === "chat" ? "block" : "hidden"
-        }`}
-      >
-        <AIChatSidebar plugin={plugin} apiKey={plugin.settings.API_KEY} />
       </div>
     </div>
   );
@@ -109,12 +100,6 @@ function AssistantContent({
         >
           Inbox
         </TabButton>
-        <TabButton
-          isActive={activeTab === "chat"}
-          onClick={() => setActiveTab("chat")}
-        >
-          Chat
-        </TabButton>
       </div>
 
       <div className="pt-4 h-full">
@@ -145,12 +130,6 @@ export class AssistantViewWrapper extends ItemView {
       id: "open-inbox-tab",
       name: "Open Inbox Tab",
       callback: () => this.activateTab("inbox"),
-    });
-
-    this.plugin.addCommand({
-      id: "open-chat-tab",
-      name: "Open Chat Tab",
-      callback: () => this.activateTab("chat"),
     });
   }
 

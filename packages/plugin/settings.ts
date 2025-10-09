@@ -32,7 +32,6 @@ export class FileOrganizerSettings {
   enableFabric = false;
   useFolderEmbeddings = false;
   useVaultTitles = true;
-  showLocalLLMInChat = false;
   customFolderInstructions = "";
 
   selectedModel: "gpt-4o" | "llama3.2" | "gemini-2.0-flash-exp" = "gpt-4o";
@@ -93,7 +92,6 @@ export class FileOrganizerSettings {
   screenpipeTimeRange = 8; // Default to 8 hours
   // used only in screenpipe right now
   queryScreenpipeLimit = 250;
-  maxChatTokens = 100 * 1000;
   customTagInstructions =
     "Generate tags that capture the main topics, themes, and type of content in the document. Focus on specific, meaningful tags that will help with organization and retrieval.";
   hasCatalystAccess = null;

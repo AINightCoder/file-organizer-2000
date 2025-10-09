@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Button } from "../assistant/ai-chat/button";
 import FileOrganizer from "../..";
 
 export function TopUpCredits({
@@ -35,10 +34,10 @@ export function TopUpCredits({
   };
 
   return (
-    <Button onClick={handleTopUp} disabled={loading} className="w-full">
+    <button onClick={handleTopUp} disabled={loading} className="w-full">
       {loading
         ? "Processing..."
         : "Top Up $15 worth of credits"}
-    </Button>
+    </button>
   );
 }

@@ -43,7 +43,6 @@ import {
 import { initializeInboxQueue, Inbox } from "./inbox";
 import { validateFile } from "./utils";
 import { logger } from "./services/logger";
-import { addTextSelectionContext } from "./views/assistant/ai-chat/use-context-items";
 import { AIService } from "./services/ai_service";
 
 type TagCounts = {
@@ -923,37 +922,6 @@ export default class FileOrganizer extends Plugin {
       callback: async () => {
         const view = await this.ensureAssistantView();
         view?.activateTab("inbox");
-      },
-    });
-
-    this.addCommand({
-      id: "open-chat-tab",
-      name: "Open Chat Tab",
-      callback: async () => {
-        const view = await this.ensureAssistantView();
-        view?.activateTab("chat");
-      },
-    });
-    this.addCommand({
-      id: "add-selection-to-chat",
-      name: "Add Selection to Chat",
-      editorCallback: async editor => {
-        const selection = editor.getSelection();
-        if (selection) {
-          const activeFile = this.app.workspace.getActiveFile();
-          const view = await this.ensureAssistantView();
-
-          // Add the selection to context
-          addTextSelectionContext({
-            content: selection,
-            sourceFile: activeFile?.path,
-          });
-
-          // Open chat tab
-          view?.activateTab("chat");
-        } else {
-          new Notice("No text selected");
-        }
       },
     });
   }
