@@ -8,19 +8,19 @@ File Organizer 2000 的 AI 服务负责提供智能推荐功能，包括标签�
 
 ```mermaid
 flowchart TB
-    subgraph AIService [AI 服务架构]
-        Config[配置] --> Init[初始化]
-        Init --> ModelInit[初始化模型提供商]
+    subgraph AIService ["AI 服务架构"]
+        Config["配置"] --> Init["初始化"]
+        Init --> ModelInit["初始化模型提供商"]
         
-        ModelInit --> OpenAI[OpenAI]
-        ModelInit --> Anthropic[Anthropic/Claude]
-        ModelInit --> Google[Google/Gemini]
-        ModelInit --> DeepSeek[DeepSeek]
-        ModelInit --> Minimax[Minimax]
-        ModelInit --> SiliconFlow[SiliconFlow]
-        ModelInit --> Ollama[Ollama 本地]
+        ModelInit --> OpenAI["OpenAI"]
+        ModelInit --> Anthropic["Anthropic/Claude"]
+        ModelInit --> Google["Google/Gemini"]
+        ModelInit --> DeepSeek["DeepSeek"]
+        ModelInit --> Minimax["Minimax"]
+        ModelInit --> SiliconFlow["SiliconFlow"]
+        ModelInit --> Ollama["Ollama 本地"]
         
-        OpenAI --> Models[模型字典]
+        OpenAI --> Models["模型字典"]
         Anthropic --> Models
         Google --> Models
         DeepSeek --> Models
@@ -28,14 +28,14 @@ flowchart TB
         SiliconFlow --> Models
         Ollama --> Models
         
-        Models --> SelectModel[选择模型]
-        SelectModel --> DefaultModel[默认模型]
+        Models --> SelectModel["选择模型"]
+        SelectModel --> DefaultModel["默认模型"]
         
-        DefaultModel --> Services[AI 服务]
+        DefaultModel --> Services["AI 服务"]
         
-        Services --> TagService[标签推荐]
-        Services --> TitleService[标题推荐]
-        Services --> FolderService[文件夹推荐]
+        Services --> TagService["标签推荐"]
+        Services --> TitleService["标题推荐"]
+        Services --> FolderService["文件夹推荐"]
     end
     
     style AIService fill:#f0f0f0
@@ -115,68 +115,68 @@ fetch: (url, options) => {
 
 ```mermaid
 flowchart TD
-    Start([开始标签推荐]) --> CheckEnabled{标签推荐启用?}
-    CheckEnabled -->|否| Skip[跳过标签推荐]
-    CheckEnabled -->|是| GetTags[获取所有现有标签]
+    Start(["开始标签推荐"]) --> CheckEnabled{"标签推荐启用?"}
+    CheckEnabled -->|"否"| Skip["跳过标签推荐"]
+    CheckEnabled -->|"是"| GetTags["获取所有现有标签"]
     
-    GetTags --> PrepareInput[准备输入数据]
-    PrepareInput --> ValidateInput{输入有效?}
+    GetTags --> PrepareInput["准备输入数据"]
+    PrepareInput --> ValidateInput{"输入有效?"}
     
-    ValidateInput -->|否| Error[抛出错误]
-    ValidateInput -->|是| SelectModel[选择 AI 模型]
+    ValidateInput -->|"否"| Error["抛出错误"]
+    ValidateInput -->|"是"| SelectModel["选择 AI 模型"]
     
-    SelectModel --> BuildPrompt[构建提示词]
+    SelectModel --> BuildPrompt["构建提示词"]
     
-    subgraph PromptConstruction [提示词构建]
-        BuildPrompt --> SystemPrompt[系统提示]
-        BuildPrompt --> ExistingTags[现有标签列表]
-        BuildPrompt --> CustomInstructions[自定义指令]
-        BuildPrompt --> Guidelines[推荐指南]
+    subgraph PromptConstruction ["提示词构建"]
+        BuildPrompt --> SystemPrompt["系统提示"]
+        BuildPrompt --> ExistingTags["现有标签列表"]
+        BuildPrompt --> CustomInstructions["自定义指令"]
+        BuildPrompt --> Guidelines["推荐指南"]
         
-        SystemPrompt --> CombineSystem[组合系统提示]
+        SystemPrompt --> CombineSystem["组合系统提示"]
         ExistingTags --> CombineSystem
         CustomInstructions --> CombineSystem
         Guidelines --> CombineSystem
         
-        CombineSystem --> UserPrompt[用户提示]
-        UserPrompt --> FileName[文件名]
-        UserPrompt --> Content[文件内容]
+        CombineSystem --> UserPrompt["用户提示"]
+        UserPrompt --> FileName["文件名"]
+        UserPrompt --> Content["文件内容"]
     end
     
-    UserPrompt --> CallAI[调用 AI API]
-    CallAI --> GenerateObject[generateObject]
-    GenerateObject --> Schema[Zod Schema 验证]
+    UserPrompt --> CallAI["调用 AI API"]
+    CallAI --> GenerateObject["generateObject"]
+    GenerateObject --> Schema["Zod Schema 验证"]
     
-    Schema --> ValidateSchema{Schema 有效?}
-    ValidateSchema -->|否| SchemaError[Schema 错误]
-    ValidateSchema -->|是| ParseResponse[解析响应]
+    Schema --> ValidateSchema{"Schema 有效?"}
+    ValidateSchema -->|"否"| SchemaError["Schema 错误"]
+    ValidateSchema -->|"是"| ParseResponse["解析响应"]
     
-    ParseResponse --> SortTags[按评分排序]
-    SortTags --> FormatTags[格式化标签]
+    ParseResponse --> SortTags["按评分排序"]
+    SortTags --> FormatTags["格式化标签"]
     
-    FormatTags --> AddHash{标签以 # 开头?}
-    AddHash -->|否| PrependHash[添加 # 前缀]
-    AddHash -->|是| KeepTag[保持原样]
+    FormatTags --> AddHash{"标签以 # 开头?"}
+    AddHash -->|"否"| PrependHash["添加 # 前缀"]
+    AddHash -->|"是"| KeepTag["保持原样"]
     
-    PrependHash --> ReturnTags[返回标签列表]
+    PrependHash --> ReturnTags["返回标签列表"]
     KeepTag --> ReturnTags
     
-    ReturnTags --> ApplyTags[应用标签]
+    ReturnTags --> ApplyTags["应用标签"]
     
-    ApplyTags --> CheckMethod{添加方法?}
-    CheckMethod -->|Frontmatter| AddToFM[添加到 frontmatter]
-    CheckMethod -->|内联| AddInline[添加到文件首行]
+    ApplyTags --> CheckMethod{"添加方法?"}
+    CheckMethod -->|"Frontmatter"| AddToFM["添加到 frontmatter"]
+    CheckMethod -->|"内联"| AddInline["添加到文件首行"]
     
-    AddToFM --> CheckExists1{标签已存在?}
-    AddInline --> CheckExists2{标签已存在?}
+    AddToFM --> CheckExists1{"标签已存在?"}
+    AddInline --> CheckExists2{"标签已存在?"}
     
-    CheckExists1 -->|是| SkipTag1[跳过]
-    CheckExists1 -->|否| AppendFM[追加到 frontmatter]
+    CheckExists1 -->|"是"| SkipTag1["跳过"]
+    CheckExists1 -->|"否"| AppendFM["追加到 frontmatter"]
     
-    CheckExists2 -->|是| SkipTag2[跳过]
-    CheckExists2 -->|否| AppendInline[追加到首行]
+    CheckExists2 -->|"是"| SkipTag2["跳过"]
+    CheckExists2 -->|"否"| AppendInline["追加到首行"]
     
-    AppendFM --> Done([完成])
+    AppendFM --> Done(["完成"])
     AppendInline --> Done
     SkipTag1 --> Done
     SkipTag2 --> Done
@@ -222,31 +222,31 @@ Guidelines:
 
 ```mermaid
 flowchart TD
-    Start([开始应用标签]) --> FormatTag[格式化标签]
-    FormatTag --> CheckPrefix{以 # 开头?}
-    CheckPrefix -->|否| AddPrefix[添加 # 前缀]
-    CheckPrefix -->|是| KeepFormat[保持格式]
+    Start(["开始应用标签"]) --> FormatTag["格式化标签"]
+    FormatTag --> CheckPrefix{"以 # 开头?"}
+    CheckPrefix -->|"否"| AddPrefix["添加 # 前缀"]
+    CheckPrefix -->|"是"| KeepFormat["保持格式"]
     
-    AddPrefix --> CheckSetting{使用 Frontmatter?}
+    AddPrefix --> CheckSetting{"使用 Frontmatter?"}
     KeepFormat --> CheckSetting
     
-    CheckSetting -->|是| UseFM[Frontmatter 模式]
-    CheckSetting -->|否| UseInline[内联模式]
+    CheckSetting -->|"是"| UseFM["Frontmatter 模式"]
+    CheckSetting -->|"否"| UseInline["内联模式"]
     
-    UseFM --> CheckFMExists{Frontmatter 中存在?}
-    CheckFMExists -->|是| SkipFM[跳过]
-    CheckFMExists -->|否| AppendFM[添加到 tags 数组]
+    UseFM --> CheckFMExists{"Frontmatter 中存在?"}
+    CheckFMExists -->|"是"| SkipFM["跳过"]
+    CheckFMExists -->|"否"| AppendFM["添加到 tags 数组"]
     
-    UseInline --> ReadContent[读取文件内容]
-    ReadContent --> CheckInlineExists{内容中存在?}
-    CheckInlineExists -->|是| SkipInline[跳过]
-    CheckInlineExists -->|否| CheckFirstLine{检查首行}
+    UseInline --> ReadContent["读取文件内容"]
+    ReadContent --> CheckInlineExists{"内容中存在?"}
+    CheckInlineExists -->|"是"| SkipInline["跳过"]
+    CheckInlineExists -->|"否"| CheckFirstLine{"检查首行"}
     
-    CheckFirstLine --> IsAllTags{首行全是标签?}
-    IsAllTags -->|是| AppendToLine[追加到首行]
-    IsAllTags -->|否| InsertNewLine[插入新行]
+    CheckFirstLine --> IsAllTags{"首行全是标签?"}
+    IsAllTags -->|"是"| AppendToLine["追加到首行"]
+    IsAllTags -->|"否"| InsertNewLine["插入新行"]
     
-    AppendFM --> Done([完成])
+    AppendFM --> Done(["完成"])
     SkipFM --> Done
     SkipInline --> Done
     AppendToLine --> Done
@@ -262,51 +262,51 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    Start([开始标题推荐]) --> CheckEnabled{重命名启用?}
-    CheckEnabled -->|否| Skip[跳过重命名]
-    CheckEnabled -->|是| PrepareInput[准备输入数据]
+    Start(["开始标题推荐"]) --> CheckEnabled{"重命名启用?"}
+    CheckEnabled -->|"否"| Skip["跳过重命名"]
+    CheckEnabled -->|"是"| PrepareInput["准备输入数据"]
     
-    PrepareInput --> ValidateInput{输入有效?}
-    ValidateInput -->|否| Error[抛出错误]
-    ValidateInput -->|是| SelectModel[选择 AI 模型]
+    PrepareInput --> ValidateInput{"输入有效?"}
+    ValidateInput -->|"否"| Error["抛出错误"]
+    ValidateInput -->|"是"| SelectModel["选择 AI 模型"]
     
-    SelectModel --> BuildPrompt[构建提示词]
+    SelectModel --> BuildPrompt["构建提示词"]
     
-    subgraph PromptConstruction [提示词构建]
-        BuildPrompt --> SystemPrompt[系统提示]
-        SystemPrompt --> FileName[当前文件名]
-        SystemPrompt --> Count[建议数量]
-        SystemPrompt --> CustomInstructions[自定义指令]
+    subgraph PromptConstruction ["提示词构建"]
+        BuildPrompt --> SystemPrompt["系统提示"]
+        SystemPrompt --> FileName["当前文件名"]
+        SystemPrompt --> Count["建议数量"]
+        SystemPrompt --> CustomInstructions["自定义指令"]
         
-        FileName --> CombineSystem[组合系统提示]
+        FileName --> CombineSystem["组合系统提示"]
         Count --> CombineSystem
         CustomInstructions --> CombineSystem
         
-        CombineSystem --> UserPrompt[用户提示]
-        UserPrompt --> Content[文件内容]
+        CombineSystem --> UserPrompt["用户提示"]
+        UserPrompt --> Content["文件内容"]
     end
     
-    UserPrompt --> CallAI[调用 AI API]
-    CallAI --> GenerateObject[generateObject]
-    GenerateObject --> Schema[Zod Schema 验证]
+    UserPrompt --> CallAI["调用 AI API"]
+    CallAI --> GenerateObject["generateObject"]
+    GenerateObject --> Schema["Zod Schema 验证"]
     
-    Schema --> ValidateSchema{Schema 有效?}
-    ValidateSchema -->|否| SchemaError[Schema 错误]
-    ValidateSchema -->|是| ParseResponse[解析响应]
+    Schema --> ValidateSchema{"Schema 有效?"}
+    ValidateSchema -->|"否"| SchemaError["Schema 错误"]
+    ValidateSchema -->|"是"| ParseResponse["解析响应"]
     
-    ParseResponse --> SortTitles[按评分排序]
-    SortTitles --> ReturnTitles[返回标题列表]
+    ParseResponse --> SortTitles["按评分排序"]
+    SortTitles --> ReturnTitles["返回标题列表"]
     
-    ReturnTitles --> SelectTop[选择最高分标题]
-    SelectTop --> CheckSame{与当前名称相同?}
+    ReturnTitles --> SelectTop["选择最高分标题"]
+    SelectTop --> CheckSame{"与当前名称相同?"}
     
-    CheckSame -->|是| SkipRename[跳过重命名]
-    CheckSame -->|否| ApplyRename[应用新名称]
+    CheckSame -->|"是"| SkipRename["跳过重命名"]
+    CheckSame -->|"否"| ApplyRename["应用新名称"]
     
-    ApplyRename --> UpdateFile[更新文件名]
-    UpdateFile --> UpdateRecord[更新处理记录]
+    ApplyRename --> UpdateFile["更新文件名"]
+    UpdateFile --> UpdateRecord["更新处理记录"]
     
-    UpdateRecord --> Done([完成])
+    UpdateRecord --> Done(["完成"])
     SkipRename --> Done
     Skip --> Done
     Error --> Done
@@ -345,28 +345,28 @@ Instructions: "{customInstructions}"
 
 ```mermaid
 flowchart TD
-    Start([开始文件夹推荐]) --> GetFolders[获取所有用户文件夹]
+    Start(["开始文件夹推荐"]) --> GetFolders["获取所有用户文件夹"]
     
-    GetFolders --> FilterFolders[过滤忽略的文件夹]
+    GetFolders --> FilterFolders["过滤忽略的文件夹"]
     
-    subgraph FolderFiltering [文件夹过滤]
-        FilterFolders --> CheckWildcard{ignoreFolders 包含 *?}
-        CheckWildcard -->|是| ReturnEmpty[返回空列表]
-        CheckWildcard -->|否| ApplyFilters[应用过滤规则]
+    subgraph FolderFiltering ["文件夹过滤"]
+        FilterFolders --> CheckWildcard{"ignoreFolders 包含 *?"}
+        CheckWildcard -->|"是"| ReturnEmpty["返回空列表"]
+        CheckWildcard -->|"否"| ApplyFilters["应用过滤规则"]
         
-        ApplyFilters --> IgnoreList[忽略列表]
-        IgnoreList --> System1[pathToWatch]
-        IgnoreList --> System2[defaultDestinationPath]
-        IgnoreList --> System3[attachmentsPath]
-        IgnoreList --> System4[backupFolderPath]
-        IgnoreList --> System5[templatePaths]
-        IgnoreList --> System6[fabricPaths]
-        IgnoreList --> System7[errorFilePath]
-        IgnoreList --> System8[.fileorganizer2000]
-        IgnoreList --> System9[/]
-        IgnoreList --> Custom[自定义忽略文件夹]
+        ApplyFilters --> IgnoreList["忽略列表"]
+        IgnoreList --> System1["pathToWatch"]
+        IgnoreList --> System2["defaultDestinationPath"]
+        IgnoreList --> System3["attachmentsPath"]
+        IgnoreList --> System4["backupFolderPath"]
+        IgnoreList --> System5["templatePaths"]
+        IgnoreList --> System6["fabricPaths"]
+        IgnoreList --> System7["errorFilePath"]
+        IgnoreList --> System8[".fileorganizer2000"]
+        IgnoreList --> System9["/"]
+        IgnoreList --> Custom["自定义忽略文件夹"]
         
-        System1 --> FilterOut[过滤掉匹配的文件夹]
+        System1 --> FilterOut["过滤掉匹配的文件夹"]
         System2 --> FilterOut
         System3 --> FilterOut
         System4 --> FilterOut
@@ -378,53 +378,53 @@ flowchart TD
         Custom --> FilterOut
     end
     
-    FilterOut --> PrepareInput[准备输入数据]
-    ReturnEmpty --> Skip[跳过推荐]
+    FilterOut --> PrepareInput["准备输入数据"]
+    ReturnEmpty --> Skip["跳过推荐"]
     
-    PrepareInput --> ValidateInput{输入有效?}
-    ValidateInput -->|否| Error[抛出错误]
-    ValidateInput -->|是| SelectModel[选择 AI 模型]
+    PrepareInput --> ValidateInput{"输入有效?"}
+    ValidateInput -->|"否"| Error["抛出错误"]
+    ValidateInput -->|"是"| SelectModel["选择 AI 模型"]
     
-    SelectModel --> BuildPrompt[构建提示词]
+    SelectModel --> BuildPrompt["构建提示词"]
     
-    subgraph PromptConstruction [提示词构建]
-        BuildPrompt --> SystemPrompt[系统提示]
-        SystemPrompt --> FileName[文件名]
-        SystemPrompt --> FolderList[文件夹列表]
-        SystemPrompt --> Count[建议数量]
-        SystemPrompt --> CustomInstructions[自定义指令]
+    subgraph PromptConstruction ["提示词构建"]
+        BuildPrompt --> SystemPrompt["系统提示"]
+        SystemPrompt --> FileName["文件名"]
+        SystemPrompt --> FolderList["文件夹列表"]
+        SystemPrompt --> Count["建议数量"]
+        SystemPrompt --> CustomInstructions["自定义指令"]
         
-        FileName --> CombineSystem[组合系统提示]
+        FileName --> CombineSystem["组合系统提示"]
         FolderList --> CombineSystem
         Count --> CombineSystem
         CustomInstructions --> CombineSystem
         
-        CombineSystem --> UserPrompt[用户提示]
-        UserPrompt --> Content[文件内容]
+        CombineSystem --> UserPrompt["用户提示"]
+        UserPrompt --> Content["文件内容"]
     end
     
-    UserPrompt --> CallAI[调用 AI API]
-    CallAI --> GenerateObject[generateObject]
-    GenerateObject --> Schema[Zod Schema 验证]
+    UserPrompt --> CallAI["调用 AI API"]
+    CallAI --> GenerateObject["generateObject"]
+    GenerateObject --> Schema["Zod Schema 验证"]
     
-    Schema --> ValidateSchema{Schema 有效?}
-    ValidateSchema -->|否| SchemaError[Schema 错误]
-    ValidateSchema -->|是| ParseResponse[解析响应]
+    Schema --> ValidateSchema{"Schema 有效?"}
+    ValidateSchema -->|"否"| SchemaError["Schema 错误"]
+    ValidateSchema -->|"是"| ParseResponse["解析响应"]
     
-    ParseResponse --> SortFolders[按评分排序]
-    SortFolders --> ReturnFolders[返回文件夹列表]
+    ParseResponse --> SortFolders["按评分排序"]
+    SortFolders --> ReturnFolders["返回文件夹列表"]
     
-    ReturnFolders --> SelectTop[选择最高分文件夹]
-    SelectTop --> CheckNew{是新文件夹?}
+    ReturnFolders --> SelectTop["选择最高分文件夹"]
+    SelectTop --> CheckNew{"是新文件夹?"}
     
-    CheckNew -->|是| CreateFolder[创建文件夹]
-    CheckNew -->|否| UseExisting[使用现有文件夹]
+    CheckNew -->|"是"| CreateFolder["创建文件夹"]
+    CheckNew -->|"否"| UseExisting["使用现有文件夹"]
     
-    CreateFolder --> MoveFile[移动文件]
+    CreateFolder --> MoveFile["移动文件"]
     UseExisting --> MoveFile
     
-    MoveFile --> UpdateRecord[更新处理记录]
-    UpdateRecord --> Done([完成])
+    MoveFile --> UpdateRecord["更新处理记录"]
+    UpdateRecord --> Done(["完成"])
     
     Skip --> Done
     Error --> Done
@@ -466,42 +466,42 @@ Instructions: "{customInstructions}"
 
 ```mermaid
 flowchart TD
-    Start([开始文档分类]) --> CheckEnabled{分类启用?}
-    CheckEnabled -->|否| Skip[跳过分类]
-    CheckEnabled -->|是| CheckRefresh{手动刷新模式?}
+    Start(["开始文档分类"]) --> CheckEnabled{"分类启用?"}
+    CheckEnabled -->|"否"| Skip["跳过分类"]
+    CheckEnabled -->|"是"| CheckRefresh{"手动刷新模式?"}
     
-    CheckRefresh -->|是且无刷新键| Skip
-    CheckRefresh -->|否或有刷新键| GetTemplates[获取所有模板名称]
+    CheckRefresh -->|"是且无刷新键"| Skip
+    CheckRefresh -->|"否或有刷新键"| GetTemplates["获取所有模板名称"]
     
-    GetTemplates --> PrepareContent[准备内容]
-    PrepareContent --> TrimContent[截取内容]
+    GetTemplates --> PrepareContent["准备内容"]
+    PrepareContent --> TrimContent["截取内容"]
     
-    TrimContent --> CallAPI[调用分类 API]
+    TrimContent --> CallAPI["调用分类 API"]
     
-    subgraph APICall [API 调用]
-        CallAPI --> Endpoint[POST /api/classify1]
-        Endpoint --> Headers[设置请求头]
-        Headers --> Auth[Authorization: Bearer token]
-        Headers --> ContentType[Content-Type: application/json]
+    subgraph APICall ["API 调用"]
+        CallAPI --> Endpoint["POST /api/classify1"]
+        Endpoint --> Headers["设置请求头"]
+        Headers --> Auth["Authorization: Bearer token"]
+        Headers --> ContentType["Content-Type: application/json"]
         
-        Auth --> Body[请求体]
+        Auth --> Body["请求体"]
         ContentType --> Body
         
-        Body --> BodyContent[content: 截取的内容]
-        Body --> BodyTemplates[templateNames: 模板列表]
+        Body --> BodyContent["content: 截取的内容"]
+        Body --> BodyTemplates["templateNames: 模板列表"]
     end
     
-    Body --> SendRequest[发送请求]
-    SendRequest --> CheckStatus{状态码 200?}
+    Body --> SendRequest["发送请求"]
+    SendRequest --> CheckStatus{"状态码 200?"}
     
-    CheckStatus -->|否| APIError[分类失败]
-    CheckStatus -->|是| ParseResponse[解析响应]
+    CheckStatus -->|"否"| APIError["分类失败"]
+    CheckStatus -->|"是"| ParseResponse["解析响应"]
     
-    ParseResponse --> ExtractType[提取文档类型]
-    ExtractType --> ReturnType[返回分类结果]
+    ParseResponse --> ExtractType["提取文档类型"]
+    ExtractType --> ReturnType["返回分类结果"]
     
-    ReturnType --> StoreResult[存储分类结果]
-    StoreResult --> Done([完成])
+    ReturnType --> StoreResult["存储分类结果"]
+    StoreResult --> Done(["完成"])
     
     Skip --> Done
     APIError --> Done
@@ -538,36 +538,36 @@ const trimmedContent = content.slice(0, cutoff);
 
 ```mermaid
 flowchart TD
-    Start([开始 AI 调用]) --> TryCall[尝试调用]
-    TryCall --> Success{成功?}
+    Start(["开始 AI 调用"]) --> TryCall["尝试调用"]
+    TryCall --> Success{"成功?"}
     
-    Success -->|是| ValidateResponse[验证响应]
-    Success -->|否| CatchError[捕获错误]
+    Success -->|"是"| ValidateResponse["验证响应"]
+    Success -->|"否"| CatchError["捕获错误"]
     
-    ValidateResponse --> IsValid{响应有效?}
-    IsValid -->|是| ReturnData[返回数据]
-    IsValid -->|否| ValidationError[验证错误]
+    ValidateResponse --> IsValid{"响应有效?"}
+    IsValid -->|"是"| ReturnData["返回数据"]
+    IsValid -->|"否"| ValidationError["验证错误"]
     
-    CatchError --> ErrorType{错误类型}
+    CatchError --> ErrorType{"错误类型"}
     
-    ErrorType -->|Network| NetworkError[网络错误]
-    ErrorType -->|API| APIError[API 错误]
-    ErrorType -->|Schema| SchemaError[Schema 错误]
-    ErrorType -->|Other| GenericError[通用错误]
+    ErrorType -->|"Network"| NetworkError["网络错误"]
+    ErrorType -->|"API"| APIError["API 错误"]
+    ErrorType -->|"Schema"| SchemaError["Schema 错误"]
+    ErrorType -->|"Other"| GenericError["通用错误"]
     
-    NetworkError --> LogError[记录错误]
+    NetworkError --> LogError["记录错误"]
     APIError --> LogError
     SchemaError --> LogError
     GenericError --> LogError
     ValidationError --> LogError
     
-    LogError --> ThrowError[抛出错误]
-    ThrowError --> HandleError[错误处理器]
+    LogError --> ThrowError["抛出错误"]
+    ThrowError --> HandleError["错误处理器"]
     
-    HandleError --> MoveBackup[移动到备份文件夹]
-    MoveBackup --> UpdateStatus[更新状态为 error]
+    HandleError --> MoveBackup["移动到备份文件夹"]
+    MoveBackup --> UpdateStatus["更新状态为 error"]
     
-    ReturnData --> Done([完成])
+    ReturnData --> Done(["完成"])
     UpdateStatus --> Done
     
     style Start fill:#e1f5e1
