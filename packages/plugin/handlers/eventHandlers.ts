@@ -9,6 +9,11 @@ export function registerEventHandlers(plugin: FileOrganizer) {
       await new Promise(resolve => setTimeout(resolve, 1000));
       if (!file.path.includes(plugin.settings.pathToWatch)) return;
       if (file instanceof TFile) {
+        // Check if auto processing is enabled
+        if (!plugin.settings.enableAutoProcessing) {
+          new Notice("File detected in inbox, but auto processing is disabled: " + file.basename);
+          return;
+        }
         new Notice("Inbox is looking at new file: " + file.basename);
         Inbox.getInstance().enqueueFiles([file]);
       }
@@ -22,6 +27,11 @@ export function registerEventHandlers(plugin: FileOrganizer) {
 
       if (!file.path.includes(plugin.settings.pathToWatch)) return;
       if (file instanceof TFile) {
+        // Check if auto processing is enabled
+        if (!plugin.settings.enableAutoProcessing) {
+          new Notice("File detected in inbox, but auto processing is disabled: " + file.basename);
+          return;
+        }
         new Notice("Inbox is looking at new file: " + file.basename);
         Inbox.getInstance().enqueueFiles([file]);
       }

@@ -6,6 +6,7 @@ interface CustomizationTabProps {
 }
 
 export const CustomizationTab: React.FC<CustomizationTabProps> = ({ plugin }) => {
+  const [enableAutoProcessing, setEnableAutoProcessing] = useState(plugin.settings.enableAutoProcessing);
   const [enableFileRenaming, setEnableFileRenaming] = useState(plugin.settings.enableFileRenaming);
   const [renameInstructions, setRenameInstructions] = useState(plugin.settings.renameInstructions);
   const [useSimilarTags, setUseSimilarTags] = useState(plugin.settings.useSimilarTags);
@@ -46,6 +47,12 @@ export const CustomizationTab: React.FC<CustomizationTabProps> = ({ plugin }) =>
           </div>
         </div>
         <div className="space-y-4">
+          <ToggleSetting
+            name="Enable Auto Processing"
+            description="Enable automatic processing of files when they are added to the inbox. When disabled, files will only be processed manually."
+            value={enableAutoProcessing}
+            onChange={(value) => handleToggleChange(value, setEnableAutoProcessing, 'enableAutoProcessing')}
+          />
           <ToggleSetting
             name="Inbox Auto-Renaming"
             description="Automatically rename new files when they are processed through the inbox."

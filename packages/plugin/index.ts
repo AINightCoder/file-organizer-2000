@@ -666,6 +666,11 @@ export default class FileOrganizer extends Plugin {
     return pendingFiles;
   }
   async processBacklog() {
+    // Check if auto processing is enabled
+    if (!this.settings.enableAutoProcessing) {
+      logMessage("Auto processing is disabled, skipping backlog processing");
+      return;
+    }
     const pendingFiles = await this.getBacklog();
     logMessage("Enqueuing files from backlog V3");
     Inbox.getInstance().enqueueFiles(pendingFiles);
