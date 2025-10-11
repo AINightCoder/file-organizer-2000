@@ -4,12 +4,13 @@ import { Root, createRoot } from "react-dom/client";
 import { AssistantView } from "./organizer/organizer";
 import FileOrganizer from "../..";
 import { InboxLogs } from "./inbox-logs";
+import { WikiManager } from "./wiki-manager";
 import { SectionHeader } from "./section-header";
 import { AppContext } from "./provider";
 
 export const ORGANIZER_VIEW_TYPE = "fo2k.assistant.sidebar2";
 
-type Tab = "organizer" | "inbox";
+type Tab = "organizer" | "inbox" | "wiki";
 
 function TabContent({
   activeTab,
@@ -37,6 +38,14 @@ function TabContent({
       >
         <SectionHeader text="Inbox Processing" icon="📥 " />
         <InboxLogs />
+      </div>
+
+      <div
+        className={`absolute inset-0 ${
+          activeTab === "wiki" ? "block" : "hidden"
+        }`}
+      >
+        <WikiManager plugin={plugin} />
       </div>
     </div>
   );
@@ -100,6 +109,12 @@ function AssistantContent({
         >
           Inbox
         </TabButton>
+        <TabButton
+          isActive={activeTab === "wiki"}
+          onClick={() => setActiveTab("wiki")}
+        >
+          Wiki
+        </TabButton>
       </div>
 
       <div className="pt-4 h-full">
@@ -130,6 +145,12 @@ export class AssistantViewWrapper extends ItemView {
       id: "open-inbox-tab",
       name: "Open Inbox Tab",
       callback: () => this.activateTab("inbox"),
+    });
+
+    this.plugin.addCommand({
+      id: "open-wiki-tab",
+      name: "Open Wiki Tab",
+      callback: () => this.activateTab("wiki"),
     });
   }
 

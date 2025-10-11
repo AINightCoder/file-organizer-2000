@@ -53,6 +53,17 @@ export enum Action {
   ERROR_TAGGING = "Failed to generate tags",
   ERROR_FORMATTING = "Failed to format content",
   ERROR_MOVING = "Failed to move file",
+
+  // ===== 新增：拆分相关 Action =====
+  ATOMIC_SPLIT = "Splitting into atomic notes...",
+  ATOMIC_SPLIT_DONE = "Atomic split completed",
+  ERROR_ATOMIC_SPLIT = "Failed to split into atomic notes",
+  LENGTH_SPLIT = "Splitting by length...",
+  LENGTH_SPLIT_DONE = "Length split completed",
+  ERROR_LENGTH_SPLIT = "Failed to split by length",
+  DELETE_ORIGINAL = "Deleting original note...",
+  DELETE_ORIGINAL_DONE = "Original note deleted",
+  ERROR_DELETE_ORIGINAL = "Failed to delete original note",
 }
 
 export interface LogEntry {
@@ -418,6 +429,10 @@ export class RecordManager {
       [Action.VALIDATE_DONE]: Action.VALIDATE,
       [Action.CONTAINER_DONE]: Action.CONTAINER,
       [Action.APPEND_DONE]: Action.APPEND,
+      // 新增：拆分相关
+      [Action.ATOMIC_SPLIT_DONE]: Action.ATOMIC_SPLIT,
+      [Action.LENGTH_SPLIT_DONE]: Action.LENGTH_SPLIT,
+      [Action.DELETE_ORIGINAL_DONE]: Action.DELETE_ORIGINAL,
     };
     return reverseMap[completedStep];
   }

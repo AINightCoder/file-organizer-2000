@@ -61,6 +61,24 @@ export interface GenerateFolderOptions {
   count?: number;
 }
 
+// 添加原子化拆分相关的类型定义
+export interface AtomicNote {
+  filename: string;
+  content: string;
+  knowledgePoint?: string;
+}
+
+export interface SplitIntoAtomicNotesOptions {
+  content: string;
+  filename: string;
+  customPrompt?: string;
+}
+
+export interface SplitByLengthOptions {
+  content: string;
+  maxLength?: number;
+}
+
 // Schema definitions
 const tagsSchema = z.object({
   suggestedTags: z.array(z.object({
@@ -69,6 +87,22 @@ const tagsSchema = z.object({
     tag: z.string(),
     reason: z.string(),
   }))
+});
+
+// 原子化拆分 Schema
+const atomicSplitSchema = z.object({
+  notes: z.array(
+    z.object({
+      title: z.string().describe("笔记标题，清晰描述性强"),
+      content: z.string().describe("笔记内容，完整的markdown格式"),
+      knowledgePoint: z.string().optional().describe("知识点描述，一句话说明核心概念"),
+    })
+  ),
+});
+
+// 长度拆分 Schema
+const lengthSplitSchema = z.object({
+  fragments: z.array(z.string()).describe("拆分后的内容片段"),
 });
 
 // 添加Title相关的Schema
@@ -383,6 +417,118 @@ export class AIService {
         throw new Error(`Invalid response format: ${error.message}`);
       }
       throw new Error(`Failed to generate folder suggestions: ${error.message}`);
+    }
+  }
+
+  /**
+   * 原子化拆分笔记
+   * @param options 拆分选项
+   * @returns 拆分后的原子化笔记数组
+   */
+  async splitIntoAtomicNotes(options: SplitIntoAtomicNotesOptions): Promise<AtomicNote[]> {
+    try {
+      logger.info("Splitting into atomic notes with options:", options);
+      const { content, filename, customPrompt } = options;
+
+      // 验证输入
+      if (!content || !filename) {
+        logger.error("Invalid input:", { content: !!content, filename: !!filename });
+        throw new Error("Content and filename are required");
+      }
+
+      const prompt = customPrompt || `分析以下笔记内容，按照单一知识点原则拆分成独立的原子化笔记。
+
+要求：
+1. 每个笔记专注一个核心概念或知识点
+2. 保持每个笔记的语义完整性和独立性
+3. 为每个笔记提供清晰的标题和知识点说明
+4. 如果内容本身已经是单一知识点，返回包含原内容的单个笔记
+
+原文件名：${filename}
+
+笔记内容：
+${content}`;
+
+      const response = await generateObject({
+        model: this.model,
+        schema: atomicSplitSchema,
+        system: "You are an expert at analyzing and splitting notes into atomic, self-contained knowledge units. Each note should focus on a single concept or idea.",
+        prompt: prompt,
+      });
+
+      logger.info("Raw AI response:", response);
+
+      // 验证返回格式
+      if (!Array.isArray(response.object.notes)) {
+        throw new Error("AI返回格式错误：期望 { notes: [...] }");
+      }
+
+      const atomicNotes: AtomicNote[] = response.object.notes.map((note: any) => ({
+        filename: note.title || "未命名笔记",
+        content: note.content || "",
+        knowledgePoint: note.knowledgePoint,
+      }));
+
+      logger.info("Generated atomic notes:", atomicNotes);
+      return atomicNotes;
+
+    } catch (error) {
+      logger.error("Error splitting into atomic notes:", error);
+      if (error instanceof z.ZodError) {
+        throw new Error(`Invalid response format: ${error.message}`);
+      }
+      throw new Error(`Failed to split into atomic notes: ${error.message}`);
+    }
+  }
+
+  /**
+   * 按长度智能拆分内容
+   * @param options 拆分选项
+   * @returns 拆分后的内容片段数组
+   */
+  async splitByLength(options: SplitByLengthOptions): Promise<string[]> {
+    try {
+      logger.info("Splitting by length with options:", options);
+      const { content, maxLength = 3000 } = options;
+
+      // 如果内容不超过限制，直接返回
+      if (content.length <= maxLength) {
+        return [content];
+      }
+
+      const prompt = `将以下内容在保持语义完整的前提下，按段落边界拆分为多个片段，每个片段不超过 ${maxLength} 字符。
+
+要求：
+1. 在段落或章节边界处拆分
+2. 保持每个片段的上下文连贯性
+3. 避免在句子中间截断
+4. 如果某个段落本身超过限制，在合适的句子边界拆分
+
+内容：
+${content}`;
+
+      const response = await generateObject({
+        model: this.model,
+        schema: lengthSplitSchema,
+        system: "You are an expert at intelligently splitting long content while preserving semantic coherence and context.",
+        prompt: prompt,
+      });
+
+      logger.info("Raw AI response:", response);
+
+      if (!Array.isArray(response.object.fragments)) {
+        throw new Error("AI返回格式错误：期望 { fragments: [...] }");
+      }
+
+      logger.info("Generated fragments:", response.object.fragments);
+      return response.object.fragments;
+
+    } catch (error) {
+      logger.error("Error splitting by length:", error);
+      if (error instanceof z.ZodError) {
+        throw new Error(`Invalid response format: ${error.message}`);
+      }
+      throw new Error(`Failed to split by length: ${error.message}`);
     }
   }
 }

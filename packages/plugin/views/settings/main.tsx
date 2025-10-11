@@ -5,6 +5,7 @@ import { FileConfigTab } from './file-config-tab';
 import { CustomizationTab } from './customization-tab';
 import { AdvancedTab } from './advanced-tab';
 import { ExperimentTab } from './experiment-tab';
+import { KnowledgeTestTab } from './knowledge-test-tab';
 
 interface Tab {
   name: string;
@@ -24,6 +25,7 @@ export const SettingsTabContent: React.FC<SettingsTabContentProps> = ({ plugin }
     { name: 'Vault Access', component: FileConfigTab },
     { name: 'Experiment', component: ExperimentTab },
     { name: 'Advanced', component: AdvancedTab },
+    { name: 'Knowledge Test', component: KnowledgeTestTab },
   ];
 
   return (

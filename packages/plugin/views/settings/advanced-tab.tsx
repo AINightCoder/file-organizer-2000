@@ -26,6 +26,26 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ plugin }) => {
     plugin.settings.isManualRefresh
   );
 
+  // 知识管理相关状态
+  const [enableKnowledgeManagement, setEnableKnowledgeManagement] = useState(
+    plugin.settings.enableKnowledgeManagement
+  );
+  const [enableAtomicSplit, setEnableAtomicSplit] = useState(
+    plugin.settings.enableAtomicSplit
+  );
+  const [maxNoteLength, setMaxNoteLength] = useState(
+    plugin.settings.maxNoteLength
+  );
+  const [minNoteLength, setMinNoteLength] = useState(
+    plugin.settings.minNoteLength
+  );
+  const [splitStrategy, setSplitStrategy] = useState(
+    plugin.settings.splitStrategy
+  );
+  const [atomicSplitPrompt, setAtomicSplitPrompt] = useState(
+    plugin.settings.atomicSplitPrompt
+  );
+
   const handleToggleChange = async (value: boolean) => {
     setEnableSelfHosting(value);
     plugin.settings.enableSelfHosting = value;
@@ -194,6 +214,132 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ plugin }) => {
             className="w-24"
           />
         </div>
+      </div>
+
+      {/* 知识管理功能设置 */}
+      <div className="mt-8 pt-6 border-t border-[--background-modifier-border]">
+        <h3 className="text-lg font-semibold mb-4 text-[--text-normal]">📚 知识管理功能</h3>
+
+        <ToggleSetting
+          name="启用知识管理功能"
+          description="启用后，处理流程将包含原子化拆分、智能分类等知识管理增强功能。这是使用 Wiki Tab 和相关功能的前提。"
+          value={enableKnowledgeManagement}
+          onChange={value => {
+            setEnableKnowledgeManagement(value);
+            plugin.settings.enableKnowledgeManagement = value;
+            plugin.saveSettings();
+          }}
+        />
+
+        {enableKnowledgeManagement && (
+          <div className="ml-4 mt-4 space-y-4 p-4 bg-[--background-secondary] rounded-lg">
+            <ToggleSetting
+              name="启用原子化拆分"
+              description="自动将包含多个知识点的笔记拆分为独立的原子化笔记。"
+              value={enableAtomicSplit}
+              onChange={value => {
+                setEnableAtomicSplit(value);
+                plugin.settings.enableAtomicSplit = value;
+                plugin.saveSettings();
+              }}
+            />
+
+            <div className="setting-item">
+              <div className="setting-item-info">
+                <div className="setting-item-name">最小笔记长度</div>
+                <div className="setting-item-description">
+                  低于此长度的笔记不会被拆分（字符数）。默认: 100
+                </div>
+              </div>
+              <div className="setting-item-control">
+                <input
+                  type="number"
+                  min="50"
+                  max="1000"
+                  value={minNoteLength}
+                  onChange={e => {
+                    const value = parseInt(e.target.value);
+                    setMinNoteLength(value);
+                    plugin.settings.minNoteLength = value;
+                    plugin.saveSettings();
+                  }}
+                  className="w-24"
+                />
+              </div>
+            </div>
+
+            <div className="setting-item">
+              <div className="setting-item-info">
+                <div className="setting-item-name">最大笔记长度</div>
+                <div className="setting-item-description">
+                  超过此长度的笔记建议拆分（字符数）。默认: 3000
+                </div>
+              </div>
+              <div className="setting-item-control">
+                <input
+                  type="number"
+                  min="1000"
+                  max="10000"
+                  step="100"
+                  value={maxNoteLength}
+                  onChange={e => {
+                    const value = parseInt(e.target.value);
+                    setMaxNoteLength(value);
+                    plugin.settings.maxNoteLength = value;
+                    plugin.saveSettings();
+                  }}
+                  className="w-24"
+                />
+              </div>
+            </div>
+
+            <div className="setting-item">
+              <div className="setting-item-info">
+                <div className="setting-item-name">拆分策略</div>
+                <div className="setting-item-description">
+                  选择笔记拆分的策略：按知识点、按长度或两者结合
+                </div>
+              </div>
+              <div className="setting-item-control">
+                <select
+                  value={splitStrategy}
+                  onChange={e => {
+                    const value = e.target.value as "atomic" | "length" | "both";
+                    setSplitStrategy(value);
+                    plugin.settings.splitStrategy = value;
+                    plugin.saveSettings();
+                  }}
+                  className="dropdown"
+                >
+                  <option value="atomic">按知识点拆分</option>
+                  <option value="length">按长度拆分</option>
+                  <option value="both">组合拆分（推荐）</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="setting-item">
+              <div className="setting-item-info">
+                <div className="setting-item-name">原子化拆分提示词</div>
+                <div className="setting-item-description">
+                  自定义 AI 拆分笔记时使用的提示词。可在 Knowledge Test Tab 中测试效果。
+                </div>
+              </div>
+            </div>
+            <div className="mt-2">
+              <textarea
+                value={atomicSplitPrompt}
+                onChange={e => {
+                  setAtomicSplitPrompt(e.target.value);
+                  plugin.settings.atomicSplitPrompt = e.target.value;
+                  plugin.saveSettings();
+                }}
+                className="w-full h-32 p-2 border border-[--background-modifier-border] rounded text-sm font-mono"
+                placeholder="输入拆分提示词..."
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

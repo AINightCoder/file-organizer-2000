@@ -57,6 +57,19 @@ interface EventRecord {
   metadata?: Record<string, any>;
 }
 
+interface SplitNote {
+  filename: string;
+  content: string;
+  knowledgePoint?: string;
+  metadata?: {
+    title: string;
+    cate: string;
+    subcate: string;
+    tags: string[];
+    summary: string;
+  };
+}
+
 interface ProcessingContext {
   inboxFile: TFile;
   containerFile?: TFile;
@@ -82,6 +95,12 @@ interface ProcessingContext {
     tag: string;
     reason: string;
   }>;
+
+  // ===== 新增字段：拆分相关 =====
+  splitNotes?: SplitNote[];
+  isAtomicNote?: boolean;       // 标记是否是拆分后的笔记
+  parentHash?: string;          // 父笔记的hash（用于追踪）
+  splitIndex?: number;          // 拆分序号（1/2/3...）
 }
 
 interface StepValidation {
@@ -312,6 +331,7 @@ export class Inbox {
     };
 
     try {
+      // ===== 前置步骤（1-6）=====
       await executeStep(
         context,
         startProcessing,
@@ -348,6 +368,90 @@ export class Inbox {
         Action.CLEANUP,
         Action.ERROR_CLEANUP
       );
+
+      // ===== 拆分判断点 =====
+      if (shouldSplitNote(context)) {
+        logger.info("开始笔记拆分流程", { hash: context.hash });
+
+        // 执行拆分步骤
+        await executeStep(
+          context,
+          atomicSplitStep,
+          Action.ATOMIC_SPLIT,
+          Action.ERROR_ATOMIC_SPLIT
+        );
+        await executeStep(
+          context,
+          lengthSplitStep,
+          Action.LENGTH_SPLIT,
+          Action.ERROR_LENGTH_SPLIT
+        );
+
+        // 如果成功拆分
+        if (context.splitNotes && context.splitNotes.length > 0) {
+          logger.info("拆分成功，开始递归处理", {
+            hash: context.hash,
+            count: context.splitNotes.length,
+          });
+
+          // 删除原笔记
+          await executeStep(
+            context,
+            deleteOriginalNoteStep,
+            Action.DELETE_ORIGINAL,
+            Action.ERROR_DELETE_ORIGINAL
+          );
+
+          // 递归处理每个拆分后的笔记
+          for (let i = 0; i < context.splitNotes.length; i++) {
+            const splitNote = context.splitNotes[i];
+
+            logger.info("处理拆分笔记", {
+              index: i + 1,
+              total: context.splitNotes.length,
+              filename: splitNote.filename,
+            });
+
+            try {
+              // 创建新文件（在inbox目录）
+              const newFile = await safeCreate(
+                context.plugin.app,
+                `${context.plugin.settings.pathToWatch}/${splitNote.filename}.md`,
+                splitNote.content
+              );
+
+              // 如果是第一个笔记且有附件，附加附件
+              if (i === 0 && context.attachmentFile) {
+                await context.plugin.app.vault.append(
+                  newFile,
+                  `\n\n![[${context.attachmentFile.name}]]`
+                );
+              }
+
+              // 创建子上下文并递归处理
+              const childContext = createChildContext(context, newFile, splitNote);
+              context.recordManager.startTracking(childContext.hash, splitNote.filename);
+
+              // 递归调用（子笔记会被标记为 isAtomicNote，不会再次拆分）
+              await this.processInboxFile(newFile, childContext.hash);
+
+            } catch (error) {
+              logger.error("处理拆分笔记失败", {
+                index: i + 1,
+                filename: splitNote.filename,
+                error,
+              });
+              // 继续处理下一个笔记
+            }
+          }
+
+          // 标记原笔记处理完成
+          context.recordManager.setStatus(context.hash, "completed");
+          return; // 不再继续处理原笔记
+        }
+      }
+
+      // ===== 后续步骤（7-13）- 正常处理流程 =====
       await executeStep(
         context,
         recommendClassificationStep,
@@ -723,6 +827,26 @@ async function handleError(
 
   // Different handling based on error type
   switch (lastError?.action) {
+    case Action.ERROR_ATOMIC_SPLIT:
+    case Action.ERROR_LENGTH_SPLIT:
+      // 拆分失败不阻断流程，继续按原笔记处理
+      logger.warn("拆分失败，继续按原笔记处理", {
+        hash: context.hash,
+        error: error.message,
+      });
+      context.splitNotes = []; // 清空拆分结果
+      // 不抛出错误，继续后续步骤
+      break;
+
+    case Action.ERROR_DELETE_ORIGINAL:
+      // 删除原笔记失败，需要回滚
+      logger.error("删除原笔记失败，需要清理拆分笔记", {
+        hash: context.hash,
+      });
+      await rollbackSplitNotes(context);
+      await moveFileToErrorFolder(context);
+      break;
+
     case Action.ERROR_MOVING_ATTACHMENT:
     case Action.ERROR_MOVING:
       // Handle file system errors
@@ -772,6 +896,285 @@ export function enqueueFiles(files: TFile[]): void {
 export function getInboxStatus(): QueueStatus {
   return Inbox.getInstance().getQueueStats();
 }
+// ===== 知识管理：拆分相关函数 =====
+
+/**
+ * 判断是否需要拆分笔记
+ */
+function shouldSplitNote(context: ProcessingContext): boolean {
+  const settings = context.plugin.settings;
+
+  // 功能未启用
+  if (!settings.enableKnowledgeManagement) {
+    return false;
+  }
+
+  // 已经是原子化笔记（避免无限递归）
+  if (context.isAtomicNote) {
+    logger.info("跳过拆分：已经是原子化笔记", { hash: context.hash });
+    return false;
+  }
+
+  // 内容太短
+  const contentLength = context.content?.length || 0;
+  if (contentLength < settings.minNoteLength) {
+    logger.info("跳过拆分：内容太短", {
+      hash: context.hash,
+      length: contentLength
+    });
+    return false;
+  }
+
+  // 非文本文件（媒体文件等）
+  if (context.attachmentFile) {
+    logger.info("跳过拆分：非文本文件", { hash: context.hash });
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * 知识点原子化拆分步骤
+ */
+async function atomicSplitStep(
+  context: ProcessingContext
+): Promise<ProcessingContext> {
+  const settings = context.plugin.settings;
+
+  // 检查是否启用原子化拆分
+  if (!settings.enableAtomicSplit) {
+    logger.info("跳过原子化拆分：功能未启用");
+    return context;
+  }
+
+  logger.info("开始原子化拆分", {
+    hash: context.hash,
+    filename: context.containerFile.basename
+  });
+
+  try {
+    // 调用AI服务进行拆分
+    const aiService = context.plugin.aiService;
+    if (!aiService) {
+      throw new Error("AI服务未初始化");
+    }
+
+    const atomicNotes = await aiService.splitIntoAtomicNotes({
+      content: context.content,
+      filename: context.containerFile.basename,
+      customPrompt: settings.atomicSplitPrompt
+    });
+
+    logger.info("原子化拆分完成", {
+      hash: context.hash,
+      count: atomicNotes.length
+    });
+
+    // 如果只返回一个笔记且内容相同，说明无需拆分
+    if (atomicNotes.length === 1 &&
+        atomicNotes[0].content.trim() === context.content.trim()) {
+      logger.info("无需拆分：内容已是单一知识点");
+      context.splitNotes = [];
+      return context;
+    }
+
+    // 存储拆分结果
+    context.splitNotes = atomicNotes.map((note) => ({
+      filename: note.filename,
+      content: note.content,
+      knowledgePoint: note.knowledgePoint,
+    }));
+
+    return context;
+  } catch (error) {
+    logger.error("原子化拆分失败", error);
+    // 拆分失败不应阻断流程，继续后续处理
+    context.splitNotes = [];
+    return context;
+  }
+}
+
+/**
+ * 按最大字数拆分步骤
+ */
+async function lengthSplitStep(
+  context: ProcessingContext
+): Promise<ProcessingContext> {
+  const settings = context.plugin.settings;
+
+  // 如果没有拆分结果，检查是否需要按长度拆分
+  if (!context.splitNotes || context.splitNotes.length === 0) {
+    const contentLength = context.content?.length || 0;
+
+    if (contentLength > settings.maxNoteLength) {
+      logger.info("开始按长度拆分", {
+        hash: context.hash,
+        length: contentLength,
+        maxLength: settings.maxNoteLength
+      });
+
+      try {
+        const aiService = context.plugin.aiService;
+        if (!aiService) {
+          throw new Error("AI服务未初始化");
+        }
+
+        const fragments = await aiService.splitByLength({
+          content: context.content,
+          maxLength: settings.maxNoteLength
+        });
+
+        logger.info("按长度拆分完成", {
+          hash: context.hash,
+          count: fragments.length
+        });
+
+        // 生成拆分笔记
+        context.splitNotes = fragments.map((fragment, index) => ({
+          filename: `${context.containerFile.basename} ${index + 1}`,
+          content: fragment,
+        }));
+      } catch (error) {
+        logger.error("按长度拆分失败", error);
+        context.splitNotes = [];
+      }
+    }
+  } else {
+    // 对每个原子化拆分的笔记检查长度
+    const newSplitNotes: SplitNote[] = [];
+
+    for (const note of context.splitNotes) {
+      if (note.content.length > settings.maxNoteLength) {
+        logger.info("原子笔记超长，进行长度拆分", {
+          filename: note.filename,
+          length: note.content.length,
+        });
+
+        try {
+          const aiService = context.plugin.aiService;
+          if (!aiService) {
+            throw new Error("AI服务未初始化");
+          }
+
+          const fragments = await aiService.splitByLength({
+            content: note.content,
+            maxLength: settings.maxNoteLength
+          });
+
+          // 为每个片段生成独立笔记
+          fragments.forEach((fragment, index) => {
+            newSplitNotes.push({
+              filename: `${note.filename} ${index + 1}`,
+              content: fragment,
+              knowledgePoint: note.knowledgePoint,
+            });
+          });
+        } catch (error) {
+          logger.error("原子笔记长度拆分失败", error);
+          // 失败时保留原笔记
+          newSplitNotes.push(note);
+        }
+      } else {
+        newSplitNotes.push(note);
+      }
+    }
+
+    context.splitNotes = newSplitNotes;
+  }
+
+  return context;
+}
+
+/**
+ * 删除原笔记步骤
+ */
+async function deleteOriginalNoteStep(
+  context: ProcessingContext
+): Promise<ProcessingContext> {
+  // 只有在成功拆分时才删除
+  if (context.splitNotes && context.splitNotes.length > 0) {
+    logger.info("删除原笔记", {
+      hash: context.hash,
+      filename: context.containerFile.basename
+    });
+
+    try {
+      await context.plugin.app.vault.delete(context.containerFile);
+
+      // 如果有附件文件也一起处理
+      if (context.attachmentFile &&
+          context.attachmentFile !== context.containerFile) {
+        // 保留附件，后续会附加到第一个拆分笔记
+      }
+
+      logger.info("原笔记已删除", { hash: context.hash });
+    } catch (error) {
+      logger.error("删除原笔记失败", error);
+      throw error;
+    }
+  }
+
+  return context;
+}
+
+/**
+ * 创建子上下文（用于递归处理）
+ */
+function createChildContext(
+  parentContext: ProcessingContext,
+  newFile: TFile,
+  splitNote: SplitNote
+): ProcessingContext {
+  const childHash = parentContext.idService.generateFileHash(newFile);
+
+  return {
+    inboxFile: newFile,
+    containerFile: newFile,
+    hash: childHash,
+    content: splitNote.content,
+    plugin: parentContext.plugin,
+    recordManager: parentContext.recordManager,
+    idService: parentContext.idService,
+    queue: parentContext.queue,
+
+    // 标记为原子化笔记（避免无限递归）
+    isAtomicNote: true,
+    parentHash: parentContext.hash,
+  };
+}
+
+/**
+ * 回滚拆分笔记（当删除原笔记失败时）
+ */
+async function rollbackSplitNotes(context: ProcessingContext): Promise<void> {
+  if (!context.splitNotes || context.splitNotes.length === 0) {
+    return;
+  }
+
+  logger.info("开始回滚拆分笔记", {
+    hash: context.hash,
+    count: context.splitNotes.length,
+  });
+
+  for (const splitNote of context.splitNotes) {
+    try {
+      const filePath = `${context.plugin.settings.pathToWatch}/${splitNote.filename}.md`;
+      const file = context.plugin.app.vault.getAbstractFileByPath(filePath);
+
+      if (file instanceof TFile) {
+        await context.plugin.app.vault.delete(file);
+        logger.info("已删除拆分笔记", { filename: splitNote.filename });
+      }
+    } catch (error) {
+      logger.error("删除拆分笔记失败", {
+        filename: splitNote.filename,
+        error,
+      });
+    }
+  }
+}
+
 // skip actions when settings below are false
 function shouldSkipAction(context: ProcessingContext, action: Action): boolean {
   switch (action) {

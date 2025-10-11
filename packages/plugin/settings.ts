@@ -97,6 +97,39 @@ export class FileOrganizerSettings {
     "Generate tags that capture the main topics, themes, and type of content in the document. Focus on specific, meaningful tags that will help with organization and retrieval.";
   hasCatalystAccess = null;
   isManualRefresh = true; // 是否只在手动刷新时重新生成建议
+
+  // ===== 知识管理相关配置 =====
+
+  // 总开关
+  enableKnowledgeManagement = true;
+
+  // 原子化拆分
+  enableAtomicSplit = true;          // 启用知识点原子化拆分
+  maxNoteLength = 3000;              // 单个笔记最大字符数
+  minNoteLength = 100;               // 笔记最小长度（低于此值不拆分）
+
+  // 知识库结构
+  knowledgeBaseRoot = "1.Area";      // 知识库根目录
+  projectRoot = "2.Project";         // 项目根目录
+  archiveRoot = "3.Archive";         // 归档根目录
+
+  // 拆分策略
+  splitStrategy: "atomic" | "length" | "both" = "both";
+
+  // AI 提示词
+  atomicSplitPrompt = `分析以下笔记内容，按照单一知识点原则拆分成独立的原子化笔记。
+要求：
+1. 每个笔记专注一个核心概念或知识点
+2. 保持每个笔记的语义完整性和独立性
+3. 为每个笔记提供清晰的标题和知识点说明
+4. 如果内容本身已经是单一知识点，返回原内容即可`;
+
+  // 元数据模板（阶段2）
+  enableEnhancedMetadata = false;    // 启用增强元数据
+
+  // Roadmap关联（阶段4）
+  enableRoadmapLinking = false;      // 启用Roadmap自动关联
+  roadmapFolder = "01.Roadmap";      // Roadmap文件夹名称
 }
 
 export const DEFAULT_SETTINGS = new FileOrganizerSettings();
