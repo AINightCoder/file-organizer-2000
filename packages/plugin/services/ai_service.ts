@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { logger } from "./logger";
-import { generateObject, LanguageModel } from "ai";
+import { generateObject, generateText, LanguageModel } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
@@ -79,6 +79,71 @@ export interface SplitByLengthOptions {
   maxLength?: number;
 }
 
+// 添加增强元数据相关的类型定义 (Phase 2)
+export interface EnhancedMetadata {
+  title: string;
+  category: string;
+  subcategory?: string;
+  tags: string[];
+  summary: string;
+  source?: string;
+  credibility?: number;  // 1-5分
+  created?: string;
+  updated?: string;
+}
+
+export interface GenerateMetadataOptions {
+  content: string;
+  filename: string;
+  existingCategories?: string[];
+  customPrompt?: string;
+}
+
+// 添加智能分类相关的类型定义 (Phase 3)
+export interface FolderStructure {
+  path: string;              // 文件夹路径
+  name: string;              // 文件夹名称
+  level: number;             // 层级 (1, 2, 3)
+  parent?: string;           // 父文件夹路径
+  children?: FolderStructure[]; // 子文件夹
+}
+
+export interface IntelligentClassification {
+  targetFolder: string;      // 目标文件夹路径 (相对于 vault 根目录)
+  category: string;          // 一级分类名称
+  subcategory?: string;      // 二级分类名称
+  level3?: string;           // 三级分类名称 (可选)
+  confidence: number;        // 分类置信度 0-100
+  reason: string;            // 分类理由
+  shouldCreateFolder: boolean; // 是否需要创建新文件夹
+}
+
+export interface GenerateClassificationOptions {
+  content: string;
+  metadata: EnhancedMetadata;
+  knowledgeBaseStructure: FolderStructure[];
+  customPrompt?: string;
+}
+
+// 添加 Roadmap 相关的类型定义 (Phase 4)
+export interface RoadmapInsertPosition {
+  section: string;           // 插入的章节名称
+  lineNumber: number;        // 插入的行号
+  reasoning: string;         // 插入理由
+}
+
+export interface GenerateRoadmapOptions {
+  domain: string;            // 领域名称
+  customPrompt?: string;
+}
+
+export interface FindInsertPositionOptions {
+  roadmapContent: string;    // Roadmap 内容
+  noteContent: string;       // 笔记内容
+  noteTitle: string;         // 笔记标题
+  notePath: string;          // 笔记路径
+}
+
 // Schema definitions
 const tagsSchema = z.object({
   suggestedTags: z.array(z.object({
@@ -132,6 +197,35 @@ const folderSchema = z.object({
       reason: z.string(),
     })
   ).min(1),
+});
+
+// 增强元数据 Schema (Phase 2)
+const metadataSchema = z.object({
+  title: z.string().describe("笔记标题"),
+  category: z.string().describe("一级分类，如：技术、生活、工作等"),
+  subcategory: z.string().optional().describe("二级分类，更细致的分类"),
+  tags: z.array(z.string()).describe("相关标签，3-5个"),
+  summary: z.string().describe("内容摘要，100字以内"),
+  source: z.string().optional().describe("来源信息，如：书籍、文章、课程等"),
+  credibility: z.number().min(1).max(5).optional().describe("可信度评分，1-5分"),
+});
+
+// 智能分类 Schema (Phase 3)
+const classificationSchema = z.object({
+  targetFolder: z.string().describe("目标文件夹路径，如：1.Area/技术/前端开发"),
+  category: z.string().describe("一级分类名称"),
+  subcategory: z.string().optional().describe("二级分类名称"),
+  level3: z.string().optional().describe("三级分类名称"),
+  confidence: z.number().min(0).max(100).describe("分类置信度评分"),
+  reason: z.string().describe("分类理由，说明为什么选择这个分类"),
+  shouldCreateFolder: z.boolean().describe("如果目标文件夹不存在，是否应该创建"),
+});
+
+// Roadmap 插入位置 Schema (Phase 4)
+const roadmapInsertPositionSchema = z.object({
+  section: z.string().describe("插入的章节名称，如：初级（入门基础）或 中级（进阶提升）"),
+  lineNumber: z.number().describe("插入的行号"),
+  reasoning: z.string().describe("为什么选择这个位置的理由"),
 });
 
 export class AIService {
@@ -530,5 +624,336 @@ ${content}`;
       }
       throw new Error(`Failed to split by length: ${error.message}`);
     }
+  }
+
+  /**
+   * 生成增强元数据 (Phase 2)
+   * @param options 生成选项
+   * @returns 增强元数据对象
+   */
+  async generateEnhancedMetadata(options: GenerateMetadataOptions): Promise<EnhancedMetadata> {
+    try {
+      logger.info("Generating enhanced metadata with options:", options);
+      const { content, filename, existingCategories = [], customPrompt } = options;
+
+      // 验证输入
+      if (!content || !filename) {
+        logger.error("Invalid input:", { content: !!content, filename: !!filename });
+        throw new Error("Content and filename are required");
+      }
+
+      const categoriesHint = existingCategories.length > 0
+        ? `已有分类参考: ${existingCategories.join(", ")}`
+        : "可以创建新的分类";
+
+      const prompt = customPrompt || `分析以下笔记内容，生成结构化的元数据。
+
+要求：
+1. 标题(title): 简洁清晰，概括核心内容
+2. 一级分类(category): 如技术、生活、工作、学习等
+3. 二级分类(subcategory): 更细致的分类，可选
+4. 标签(tags): 3-5个相关标签，便于检索
+5. 摘要(summary): 100字以内的内容概括
+6. 来源(source): 如有明确来源信息请提取，可选
+7. 可信度(credibility): 1-5分评估内容可信度，可选
+
+${categoriesHint}
+
+原文件名: ${filename}
+
+笔记内容:
+${content}`;
+
+      const response = await generateObject({
+        model: this.model,
+        schema: metadataSchema,
+        system: "You are an expert at analyzing content and generating structured metadata. Focus on accuracy, clarity, and usefulness for knowledge management.",
+        prompt: prompt,
+      });
+
+      logger.info("Raw AI response:", response);
+
+      // 构建元数据对象
+      const metadata: EnhancedMetadata = {
+        title: response.object.title,
+        category: response.object.category,
+        subcategory: response.object.subcategory,
+        tags: response.object.tags.map(tag => tag.startsWith('#') ? tag : `#${tag}`),
+        summary: response.object.summary,
+        source: response.object.source,
+        credibility: response.object.credibility,
+        created: new Date().toISOString(),
+        updated: new Date().toISOString(),
+      };
+
+      logger.info("Generated metadata:", metadata);
+      return metadata;
+
+    } catch (error) {
+      logger.error("Error generating enhanced metadata:", error);
+      if (error instanceof z.ZodError) {
+        throw new Error(`Invalid response format: ${error.message}`);
+      }
+      throw new Error(`Failed to generate enhanced metadata: ${error.message}`);
+    }
+  }
+
+  /**
+   * 智能分类 - 基于元数据和知识库结构确定目标文件夹 (Phase 3)
+   * @param options 分类选项
+   * @returns 智能分类结果
+   */
+  async generateIntelligentClassification(options: GenerateClassificationOptions): Promise<IntelligentClassification> {
+    try {
+      logger.info("Generating intelligent classification with options:", options);
+      const { content, metadata, knowledgeBaseStructure, customPrompt } = options;
+
+      // 验证输入
+      if (!content || !metadata) {
+        logger.error("Invalid input:", { content: !!content, metadata: !!metadata });
+        throw new Error("Content and metadata are required");
+      }
+
+      // 构建知识库结构描述
+      const structureDescription = this.buildStructureDescription(knowledgeBaseStructure);
+
+      const prompt = customPrompt || `基于笔记内容和元数据，确定最合适的知识库分类路径。
+
+**笔记元数据**：
+- 标题: ${metadata.title}
+- 一级分类: ${metadata.category}
+- 二级分类: ${metadata.subcategory || "无"}
+- 标签: ${metadata.tags.join(", ")}
+- 摘要: ${metadata.summary}
+
+**现有知识库结构**：
+${structureDescription}
+
+**任务要求**：
+1. 根据元数据中的 category 和 subcategory 确定目标文件夹路径
+2. 优先使用已存在的文件夹路径
+3. 如果现有结构中没有匹配的分类，可以建议创建新文件夹
+4. 支持多层级结构（1级/2级/3级）
+5. 路径格式：knowledgeBaseRoot/category/subcategory/level3
+6. 评估分类的置信度（0-100分）
+7. 说明分类理由
+
+**笔记内容摘要**：
+${content.substring(0, 500)}...`;
+
+      const response = await generateObject({
+        model: this.model,
+        schema: classificationSchema,
+        system: "You are an expert at organizing knowledge and determining the most appropriate folder structure for notes. Consider semantic meaning, existing structure, and user intent.",
+        prompt: prompt,
+      });
+
+      logger.info("Raw AI response:", response);
+
+      // 构建分类结果
+      const classification: IntelligentClassification = {
+        targetFolder: response.object.targetFolder,
+        category: response.object.category,
+        subcategory: response.object.subcategory,
+        level3: response.object.level3,
+        confidence: response.object.confidence,
+        reason: response.object.reason,
+        shouldCreateFolder: response.object.shouldCreateFolder,
+      };
+
+      logger.info("Generated classification:", classification);
+      return classification;
+
+    } catch (error) {
+      logger.error("Error generating intelligent classification:", error);
+      if (error instanceof z.ZodError) {
+        throw new Error(`Invalid response format: ${error.message}`);
+      }
+      throw new Error(`Failed to generate intelligent classification: ${error.message}`);
+    }
+  }
+
+  /**
+   * 构建知识库结构描述（用于 AI 提示词）
+   */
+  private buildStructureDescription(structure: FolderStructure[]): string {
+    if (!structure || structure.length === 0) {
+      return "知识库为空，可以创建新的分类结构";
+    }
+
+    const lines: string[] = [];
+    const buildTree = (folders: FolderStructure[], indent: string = "") => {
+      for (const folder of folders) {
+        lines.push(`${indent}- ${folder.name} (${folder.path})`);
+        if (folder.children && folder.children.length > 0) {
+          buildTree(folder.children, indent + "  ");
+        }
+      }
+    };
+
+    buildTree(structure);
+    return lines.join("\n");
+  }
+
+  /**
+   * 生成 Roadmap 学习路线图 (Phase 4)
+   * @param options 生成选项
+   * @returns Roadmap 内容（Markdown 格式）
+   */
+  async generateRoadmap(options: GenerateRoadmapOptions): Promise<string> {
+    try {
+      logger.info("Generating roadmap with options:", options);
+      const { domain, customPrompt } = options;
+
+      // 验证输入
+      if (!domain) {
+        logger.error("Invalid input:", { domain: !!domain });
+        throw new Error("Domain is required");
+      }
+
+      const prompt = customPrompt || `请为【${domain}】领域生成一个完整的学习路线图。
+
+要求：
+1. 包含领域概览（简介、应用场景、学习目标、总学习周期）
+2. 按难度分为三个阶段：初级（入门基础）、中级（进阶提升）、高级（专业精通）
+3. 每个阶段列出：核心知识点、推荐资源、学习周期
+4. 提供学习建议（学习顺序、实践项目、评估标准、常见误区）
+5. 使用 Markdown 格式，结构清晰
+
+**格式示例**：
+
+## 🎯 领域概览
+- **简介**: 该领域的定义和特点
+- **应用场景**: 主要应用场景和发展趋势
+- **学习目标**: 掌握该领域后能达到的能力水平
+- **总学习周期**: 预估完整学习所需时间
+
+## 📚 初级（入门基础）
+### 核心知识点
+- [ ] 知识点1
+- [ ] 知识点2
+
+### 推荐资源
+- 资源1
+- 资源2
+
+### 学习周期
+预计：X 周
+
+## 📖 中级（进阶提升）
+[按相同格式展开]
+
+## 🎓 高级（专业精通）
+[按相同格式展开]
+
+## 💡 学习建议
+1. **学习顺序**: 建议的学习路径
+2. **实践项目**: 每个阶段建议的实践项目
+3. **评估标准**: 如何判断是否掌握该阶段内容
+4. **常见误区**: 学习过程中需要避免的问题
+
+领域: ${domain}`;
+
+      const response = await generateText({
+        model: this.model,
+        system: "You are an expert educator with 20 years of experience. Create comprehensive, structured learning roadmaps that help learners progress systematically from beginner to expert level.",
+        prompt: prompt,
+      });
+
+      logger.info("Roadmap generated successfully");
+      return response.text;
+
+    } catch (error) {
+      logger.error("Error generating roadmap:", error);
+      throw new Error(`Failed to generate roadmap: ${error.message}`);
+    }
+  }
+
+  /**
+   * 查找 Roadmap 中的插入位置 (Phase 4)
+   * @param options 查找选项
+   * @returns 插入位置信息
+   */
+  async findRoadmapInsertPosition(options: FindInsertPositionOptions): Promise<RoadmapInsertPosition> {
+    try {
+      logger.info("Finding roadmap insert position with options:", options);
+      const { roadmapContent, noteContent, noteTitle, notePath } = options;
+
+      // 验证输入
+      if (!roadmapContent || !noteContent || !noteTitle) {
+        logger.error("Invalid input:", {
+          roadmapContent: !!roadmapContent,
+          noteContent: !!noteContent,
+          noteTitle: !!noteTitle,
+        });
+        throw new Error("Roadmap content, note content, and note title are required");
+      }
+
+      // 提取 Roadmap 的章节结构
+      const sections = this.extractRoadmapSections(roadmapContent);
+      const sectionsInfo = sections.map(s => `第 ${s.lineNumber} 行: ${s.title}`).join("\n");
+
+      const prompt = `分析笔记内容，确定在学习路线图中最合适的插入位置。
+
+**笔记标题**: ${noteTitle}
+**笔记内容摘要**: ${noteContent.substring(0, 500)}...
+
+**学习路线图结构**:
+${sectionsInfo}
+
+**任务要求**:
+1. 根据笔记内容的难度和主题，确定应该插入到哪个章节
+2. 选择合适的行号插入（通常在该章节的核心知识点列表中）
+3. 说明选择该位置的理由
+
+**学习路线图内容**:
+${roadmapContent}`;
+
+      const response = await generateObject({
+        model: this.model,
+        schema: roadmapInsertPositionSchema,
+        system: "You are an expert at analyzing content and determining appropriate placement in learning roadmaps. Consider the difficulty level, topic relevance, and logical flow of the roadmap.",
+        prompt: prompt,
+      });
+
+      logger.info("Insert position found:", response.object);
+
+      return {
+        section: response.object.section,
+        lineNumber: response.object.lineNumber,
+        reasoning: response.object.reasoning,
+      };
+
+    } catch (error) {
+      logger.error("Error finding roadmap insert position:", error);
+      if (error instanceof z.ZodError) {
+        throw new Error(`Invalid response format: ${error.message}`);
+      }
+      throw new Error(`Failed to find insert position: ${error.message}`);
+    }
+  }
+
+  /**
+   * 提取 Roadmap 的章节结构（辅助方法）
+   */
+  private extractRoadmapSections(content: string): Array<{ title: string; lineNumber: number; level: number }> {
+    const lines = content.split("\n");
+    const sections: Array<{ title: string; lineNumber: number; level: number }> = [];
+
+    lines.forEach((line, index) => {
+      // 匹配 Markdown 标题 (## 或 ###)
+      const match = line.match(/^(#{2,3})\s+(.+)$/);
+      if (match) {
+        const level = match[1].length; // ## = 2, ### = 3
+        const title = match[2].trim();
+        sections.push({
+          title,
+          lineNumber: index + 1,
+          level,
+        });
+      }
+    });
+
+    return sections;
   }
 }

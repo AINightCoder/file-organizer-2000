@@ -64,6 +64,30 @@ export enum Action {
   DELETE_ORIGINAL = "Deleting original note...",
   DELETE_ORIGINAL_DONE = "Original note deleted",
   ERROR_DELETE_ORIGINAL = "Failed to delete original note",
+
+  // ===== Phase 2: 增强元数据 Action =====
+  GENERATE_METADATA = "Generating enhanced metadata...",
+  GENERATE_METADATA_DONE = "Enhanced metadata generated",
+  ERROR_GENERATE_METADATA = "Failed to generate enhanced metadata",
+  APPLY_METADATA = "Applying metadata to frontmatter...",
+  APPLY_METADATA_DONE = "Metadata applied",
+  ERROR_APPLY_METADATA = "Failed to apply metadata",
+
+  // ===== Phase 3: 智能分类 Action =====
+  INTELLIGENT_CLASSIFY = "Analyzing knowledge base structure...",
+  INTELLIGENT_CLASSIFY_DONE = "Classification completed",
+  ERROR_INTELLIGENT_CLASSIFY = "Failed to classify note",
+  MOVE_TO_FOLDER = "Moving to classified folder...",
+  MOVE_TO_FOLDER_DONE = "Moved to target folder",
+  ERROR_MOVE_TO_FOLDER = "Failed to move to folder",
+
+  // ===== Phase 4: Roadmap关联 Action =====
+  FIND_ROADMAP = "Finding or creating roadmap...",
+  FIND_ROADMAP_DONE = "Roadmap found/created",
+  ERROR_FIND_ROADMAP = "Failed to find/create roadmap",
+  LINK_TO_ROADMAP = "Linking to roadmap...",
+  LINK_TO_ROADMAP_DONE = "Linked to roadmap",
+  ERROR_LINK_TO_ROADMAP = "Failed to link to roadmap",
 }
 
 export interface LogEntry {
@@ -433,6 +457,15 @@ export class RecordManager {
       [Action.ATOMIC_SPLIT_DONE]: Action.ATOMIC_SPLIT,
       [Action.LENGTH_SPLIT_DONE]: Action.LENGTH_SPLIT,
       [Action.DELETE_ORIGINAL_DONE]: Action.DELETE_ORIGINAL,
+      // Phase 2: 增强元数据
+      [Action.GENERATE_METADATA_DONE]: Action.GENERATE_METADATA,
+      [Action.APPLY_METADATA_DONE]: Action.APPLY_METADATA,
+      // Phase 3: 智能分类
+      [Action.INTELLIGENT_CLASSIFY_DONE]: Action.INTELLIGENT_CLASSIFY,
+      [Action.MOVE_TO_FOLDER_DONE]: Action.MOVE_TO_FOLDER,
+      // Phase 4: Roadmap关联
+      [Action.FIND_ROADMAP_DONE]: Action.FIND_ROADMAP,
+      [Action.LINK_TO_ROADMAP_DONE]: Action.LINK_TO_ROADMAP,
     };
     return reverseMap[completedStep];
   }

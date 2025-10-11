@@ -70,6 +70,19 @@ interface SplitNote {
   };
 }
 
+// Phase 2: 增强元数据接口
+interface EnhancedMetadata {
+  title: string;
+  category: string;
+  subcategory?: string;
+  tags: string[];
+  summary: string;
+  source?: string;
+  credibility?: number;
+  created?: string;
+  updated?: string;
+}
+
 interface ProcessingContext {
   inboxFile: TFile;
   containerFile?: TFile;
@@ -101,6 +114,28 @@ interface ProcessingContext {
   isAtomicNote?: boolean;       // 标记是否是拆分后的笔记
   parentHash?: string;          // 父笔记的hash（用于追踪）
   splitIndex?: number;          // 拆分序号（1/2/3...）
+
+  // ===== Phase 2: 增强元数据 =====
+  enhancedMetadata?: EnhancedMetadata;  // 增强元数据
+
+  // ===== Phase 3: 智能分类 =====
+  intelligentClassification?: {
+    targetFolder: string;      // 目标文件夹路径
+    category: string;          // 一级分类
+    subcategory?: string;      // 二级分类
+    level3?: string;           // 三级分类
+    confidence: number;        // 置信度
+    reason: string;            // 分类理由
+    shouldCreateFolder: boolean; // 是否需要创建文件夹
+  };
+
+  // ===== Phase 4: Roadmap关联 =====
+  roadmapFile?: TFile;         // Roadmap 文件
+  roadmapInsertPosition?: {
+    section: string;           // 插入的章节
+    lineNumber: number;        // 插入的行号
+    reasoning: string;         // 插入理由
+  };
 }
 
 interface StepValidation {
@@ -487,6 +522,45 @@ export class Inbox {
         recommendTagsStep,
         Action.TAGGING,
         Action.ERROR_TAGGING
+      );
+      // Phase 2: 增强元数据处理
+      await executeStep(
+        context,
+        generateEnhancedMetadataStep,
+        Action.GENERATE_METADATA,
+        Action.ERROR_GENERATE_METADATA
+      );
+      await executeStep(
+        context,
+        applyMetadataStep,
+        Action.APPLY_METADATA,
+        Action.ERROR_APPLY_METADATA
+      );
+      // Phase 3: 智能分类处理
+      await executeStep(
+        context,
+        intelligentClassificationStep,
+        Action.INTELLIGENT_CLASSIFY,
+        Action.ERROR_INTELLIGENT_CLASSIFY
+      );
+      await executeStep(
+        context,
+        moveToClassifiedFolderStep,
+        Action.MOVE_TO_FOLDER,
+        Action.ERROR_MOVE_TO_FOLDER
+      );
+      // Phase 4: Roadmap 关联处理
+      await executeStep(
+        context,
+        findOrCreateRoadmapStep,
+        Action.FIND_ROADMAP,
+        Action.ERROR_FIND_ROADMAP
+      );
+      await executeStep(
+        context,
+        linkToRoadmapStep,
+        Action.LINK_TO_ROADMAP,
+        Action.ERROR_LINK_TO_ROADMAP
       );
       await executeStep(
         context,
@@ -1186,6 +1260,18 @@ function shouldSkipAction(context: ProcessingContext, action: Action): boolean {
       return !context.plugin.settings.enableFileRenaming;
     case Action.TAGGING:
       return !context.plugin.settings.useSimilarTags;
+    // Phase 2: 增强元数据
+    case Action.GENERATE_METADATA:
+    case Action.APPLY_METADATA:
+      return !context.plugin.settings.enableEnhancedMetadata;
+    // Phase 3: 智能分类
+    case Action.INTELLIGENT_CLASSIFY:
+    case Action.MOVE_TO_FOLDER:
+      return !context.plugin.settings.enableIntelligentClassification;
+    // Phase 4: Roadmap关联
+    case Action.FIND_ROADMAP:
+    case Action.LINK_TO_ROADMAP:
+      return !context.plugin.settings.enableRoadmapLinking;
     default:
       return false;
   }
@@ -1214,6 +1300,570 @@ async function executeStep(
       message: error.message,
       stack: error.stack,
     });
+    throw error;
+  }
+}
+
+// ===== Phase 2: 增强元数据相关函数 =====
+
+/**
+ * 生成增强元数据步骤
+ */
+async function generateEnhancedMetadataStep(
+  context: ProcessingContext
+): Promise<ProcessingContext> {
+  const settings = context.plugin.settings;
+
+  // 检查是否启用增强元数据
+  if (!settings.enableEnhancedMetadata) {
+    logger.info("跳过元数据生成：功能未启用");
+    return context;
+  }
+
+  logger.info("开始生成增强元数据", {
+    hash: context.hash,
+    filename: context.containerFile.basename
+  });
+
+  try {
+    const aiService = context.plugin.aiService;
+    if (!aiService) {
+      throw new Error("AI服务未初始化");
+    }
+
+    // 获取已有分类（从知识库文件夹中提取）
+    const existingCategories = await getExistingCategories(context);
+
+    // 调用AI服务生成元数据
+    const metadata = await aiService.generateEnhancedMetadata({
+      content: context.content,
+      filename: context.containerFile.basename,
+      existingCategories,
+    });
+
+    logger.info("增强元数据生成完成", {
+      hash: context.hash,
+      metadata,
+    });
+
+    context.enhancedMetadata = metadata;
+    return context;
+
+  } catch (error) {
+    logger.error("生成增强元数据失败", error);
+    // 元数据生成失败不阻断流程
+    return context;
+  }
+}
+
+/**
+ * 应用元数据到文件 Frontmatter
+ */
+async function applyMetadataStep(
+  context: ProcessingContext
+): Promise<ProcessingContext> {
+  // 如果没有生成元数据，跳过
+  if (!context.enhancedMetadata) {
+    logger.info("跳过应用元数据：未生成元数据");
+    return context;
+  }
+
+  logger.info("开始应用元数据到 Frontmatter", {
+    hash: context.hash,
+    filename: context.containerFile.basename
+  });
+
+  try {
+    const metadata = context.enhancedMetadata;
+    const file = context.containerFile;
+
+    // 读取当前文件内容
+    let content = await context.plugin.app.vault.read(file);
+
+    // 构建 YAML frontmatter
+    const frontmatter = `---
+title: ${metadata.title}
+category: ${metadata.category}
+${metadata.subcategory ? `subcategory: ${metadata.subcategory}` : ''}
+tags: [${metadata.tags.join(', ')}]
+summary: ${metadata.summary}
+${metadata.source ? `source: ${metadata.source}` : ''}
+${metadata.credibility ? `credibility: ${metadata.credibility}` : ''}
+created: ${metadata.created}
+updated: ${metadata.updated}
+---
+
+`;
+
+    // 检查文件是否已有 frontmatter
+    const frontmatterRegex = /^---\n[\s\S]*?\n---\n/;
+    if (frontmatterRegex.test(content)) {
+      // 替换已有的 frontmatter
+      content = content.replace(frontmatterRegex, frontmatter);
+    } else {
+      // 添加新的 frontmatter
+      content = frontmatter + content;
+    }
+
+    // 写入文件
+    await context.plugin.app.vault.modify(file, content);
+
+    logger.info("元数据应用完成", { hash: context.hash });
+    return context;
+
+  } catch (error) {
+    logger.error("应用元数据失败", error);
+    throw error;
+  }
+}
+
+/**
+ * 获取已有分类列表
+ */
+async function getExistingCategories(context: ProcessingContext): Promise<string[]> {
+  try {
+    const knowledgeBaseRoot = context.plugin.settings.knowledgeBaseRoot;
+    const folder = context.plugin.app.vault.getAbstractFileByPath(knowledgeBaseRoot);
+
+    if (!folder || !(folder instanceof TFolder)) {
+      return [];
+    }
+
+    // 获取一级子文件夹作为分类
+    const categories: string[] = [];
+    for (const child of folder.children) {
+      if (child instanceof TFolder) {
+        categories.push(child.name);
+      }
+    }
+
+    logger.info("已有分类", { count: categories.length, categories });
+    return categories;
+
+  } catch (error) {
+    logger.error("获取已有分类失败", error);
+    return [];
+  }
+}
+
+// ===== Phase 3: 智能分类相关函数 =====
+
+// Import AI service types for Phase 3
+import type { FolderStructure, IntelligentClassification } from "../services/ai_service";
+
+/**
+ * 获取知识库文件夹结构（Phase 3）
+ */
+async function getKnowledgeBaseStructure(context: ProcessingContext): Promise<FolderStructure[]> {
+  try {
+    const knowledgeBaseRoot = context.plugin.settings.knowledgeBaseRoot;
+    const folder = context.plugin.app.vault.getAbstractFileByPath(knowledgeBaseRoot);
+
+    if (!folder || !(folder instanceof TFolder)) {
+      logger.warn("知识库根目录不存在", { knowledgeBaseRoot });
+      return [];
+    }
+
+    const structure: FolderStructure[] = [];
+
+    // 递归构建文件夹结构树
+    function buildStructure(folder: TFolder, parentPath: string = "", level: number = 1): FolderStructure {
+      const folderStructure: FolderStructure = {
+        path: folder.path,
+        name: folder.name,
+        level: level,
+        parent: parentPath || undefined,
+        children: [],
+      };
+
+      // 遍历子文件夹（只包含文件夹，不包含文件）
+      for (const child of folder.children) {
+        if (child instanceof TFolder) {
+          const childStructure = buildStructure(child, folder.path, level + 1);
+          folderStructure.children.push(childStructure);
+        }
+      }
+
+      return folderStructure;
+    }
+
+    // 构建一级文件夹结构
+    for (const child of folder.children) {
+      if (child instanceof TFolder) {
+        structure.push(buildStructure(child, folder.path, 1));
+      }
+    }
+
+    logger.info("知识库结构获取完成", {
+      rootPath: knowledgeBaseRoot,
+      topLevelFolders: structure.length,
+    });
+
+    return structure;
+  } catch (error) {
+    logger.error("获取知识库结构失败", error);
+    return [];
+  }
+}
+
+/**
+ * 智能分类步骤 (Phase 3)
+ */
+async function intelligentClassificationStep(
+  context: ProcessingContext
+): Promise<ProcessingContext> {
+  const settings = context.plugin.settings;
+
+  // 检查是否启用智能分类
+  if (!settings.enableIntelligentClassification) {
+    logger.info("跳过智能分类：功能未启用");
+    return context;
+  }
+
+  // 必须有元数据才能进行智能分类
+  if (!context.enhancedMetadata) {
+    logger.info("跳过智能分类：未生成元数据");
+    return context;
+  }
+
+  logger.info("开始智能分类", {
+    hash: context.hash,
+    filename: context.containerFile.basename,
+    category: context.enhancedMetadata.category,
+  });
+
+  try {
+    const aiService = context.plugin.aiService;
+    if (!aiService) {
+      throw new Error("AI服务未初始化");
+    }
+
+    // 获取知识库结构
+    const knowledgeBaseStructure = await getKnowledgeBaseStructure(context);
+
+    // 调用 AI 服务进行智能分类
+    const classification = await aiService.generateIntelligentClassification({
+      content: context.content,
+      metadata: context.enhancedMetadata,
+      knowledgeBaseStructure,
+    });
+
+    logger.info("智能分类完成", {
+      hash: context.hash,
+      targetFolder: classification.targetFolder,
+      confidence: classification.confidence,
+    });
+
+    // 存储分类结果到 context
+    context.intelligentClassification = {
+      targetFolder: classification.targetFolder,
+      category: classification.category,
+      subcategory: classification.subcategory,
+      level3: classification.level3,
+      confidence: classification.confidence,
+      reason: classification.reason,
+      shouldCreateFolder: classification.shouldCreateFolder,
+    };
+
+    return context;
+  } catch (error) {
+    logger.error("智能分类失败", error);
+    // 分类失败不阻断流程，继续使用默认路径
+    return context;
+  }
+}
+
+/**
+ * 移动到分类文件夹步骤 (Phase 3)
+ */
+async function moveToClassifiedFolderStep(
+  context: ProcessingContext
+): Promise<ProcessingContext> {
+  // 如果没有分类结果，跳过
+  if (!context.intelligentClassification) {
+    logger.info("跳过移动文件：未进行智能分类");
+    return context;
+  }
+
+  const classification = context.intelligentClassification;
+
+  logger.info("开始移动到分类文件夹", {
+    hash: context.hash,
+    targetFolder: classification.targetFolder,
+  });
+
+  try {
+    const targetFolder = classification.targetFolder;
+    const app = context.plugin.app;
+
+    // 检查目标文件夹是否存在
+    let folder = app.vault.getAbstractFileByPath(targetFolder);
+
+    // 如果文件夹不存在且需要创建
+    if (!folder && classification.shouldCreateFolder) {
+      logger.info("目标文件夹不存在，开始创建", {
+        targetFolder,
+      });
+
+      // 递归创建文件夹路径
+      await createFolderRecursively(app, targetFolder);
+      folder = app.vault.getAbstractFileByPath(targetFolder);
+    }
+
+    // 确认文件夹存在后再移动
+    if (folder && folder instanceof TFolder) {
+      // 移动文件到目标文件夹
+      await safeMove(app, context.containerFile, targetFolder);
+
+      logger.info("文件移动完成", {
+        hash: context.hash,
+        targetFolder,
+        filename: context.containerFile.basename,
+      });
+
+      // 更新记录
+      context.newPath = targetFolder;
+      context.recordManager.setFolder(context.hash, targetFolder);
+    } else {
+      throw new Error(`目标文件夹不存在或创建失败: ${targetFolder}`);
+    }
+
+    return context;
+  } catch (error) {
+    logger.error("移动到分类文件夹失败", error);
+    throw error;
+  }
+}
+
+/**
+ * 递归创建文件夹路径
+ */
+async function createFolderRecursively(app: any, folderPath: string): Promise<void> {
+  const parts = folderPath.split("/").filter(p => p.length > 0);
+  let currentPath = "";
+
+  for (const part of parts) {
+    currentPath = currentPath ? `${currentPath}/${part}` : part;
+
+    // 检查当前路径是否存在
+    const existing = app.vault.getAbstractFileByPath(currentPath);
+    if (!existing) {
+      logger.info("创建文件夹", { path: currentPath });
+      await app.vault.createFolder(currentPath);
+    }
+  }
+}
+
+// ===== Phase 4: Roadmap 关联相关函数 =====
+
+/**
+ * 查找或创建 Roadmap 步骤 (Phase 4)
+ */
+async function findOrCreateRoadmapStep(
+  context: ProcessingContext
+): Promise<ProcessingContext> {
+  const settings = context.plugin.settings;
+
+  // 检查是否启用 Roadmap 关联
+  if (!settings.enableRoadmapLinking) {
+    logger.info("跳过 Roadmap 关联：功能未启用");
+    return context;
+  }
+
+  // 必须有分类信息和元数据
+  if (!context.intelligentClassification || !context.enhancedMetadata) {
+    logger.info("跳过 Roadmap 关联：未进行分类或未生成元数据");
+    return context;
+  }
+
+  logger.info("开始查找或创建 Roadmap", {
+    hash: context.hash,
+    category: context.intelligentClassification.category,
+    subcategory: context.intelligentClassification.subcategory,
+  });
+
+  try {
+    const classification = context.intelligentClassification;
+    const metadata = context.enhancedMetadata;
+
+    // 构建 Roadmap 文件路径
+    // 格式：{targetFolder}/01.Roadmap/{领域} Roadmap.md
+    const roadmapFolder = `${classification.targetFolder}/${settings.roadmapFolder}`;
+    const roadmapFileName = `${metadata.category} Roadmap.md`;
+    const roadmapPath = `${roadmapFolder}/${roadmapFileName}`;
+
+    logger.info("Roadmap 路径", { roadmapPath });
+
+    // 检查 Roadmap 文件是否存在
+    let roadmapFile = context.plugin.app.vault.getAbstractFileByPath(roadmapPath) as TFile;
+
+    if (!roadmapFile) {
+      // Roadmap 不存在，创建新的
+      logger.info("Roadmap 不存在，开始生成", { domain: metadata.category });
+
+      // 确保文件夹存在
+      await createFolderRecursively(context.plugin.app, roadmapFolder);
+
+      // 调用 AI 服务生成 Roadmap
+      const aiService = context.plugin.aiService;
+      if (!aiService) {
+        throw new Error("AI服务未初始化");
+      }
+
+      const roadmapContent = await aiService.generateRoadmap({
+        domain: metadata.category,
+      });
+
+      // 创建 Roadmap 文件
+      roadmapFile = await context.plugin.app.vault.create(roadmapPath, roadmapContent);
+      logger.info("Roadmap 创建成功", { path: roadmapPath });
+
+    } else {
+      // Roadmap 存在，检查是否有效
+      const roadmapContent = await context.plugin.app.vault.read(roadmapFile);
+
+      if (roadmapContent.trim().length < 100) {
+        // 内容太短，重新生成
+        logger.info("Roadmap 内容太短，重新生成", { path: roadmapPath });
+
+        const aiService = context.plugin.aiService;
+        if (!aiService) {
+          throw new Error("AI服务未初始化");
+        }
+
+        const newRoadmapContent = await aiService.generateRoadmap({
+          domain: metadata.category,
+        });
+
+        await context.plugin.app.vault.modify(roadmapFile, newRoadmapContent);
+        logger.info("Roadmap 重新生成完成", { path: roadmapPath });
+      }
+    }
+
+    // 存储 Roadmap 文件到 context
+    context.roadmapFile = roadmapFile;
+
+    logger.info("Roadmap 查找/创建完成", {
+      hash: context.hash,
+      roadmapPath: roadmapFile.path,
+    });
+
+    return context;
+  } catch (error) {
+    logger.error("查找/创建 Roadmap 失败", error);
+    // Roadmap 关联失败不阻断流程
+    return context;
+  }
+}
+
+/**
+ * 链接到 Roadmap 步骤 (Phase 4)
+ */
+async function linkToRoadmapStep(
+  context: ProcessingContext
+): Promise<ProcessingContext> {
+  // 如果没有 Roadmap 文件，跳过
+  if (!context.roadmapFile) {
+    logger.info("跳过链接到 Roadmap：未找到 Roadmap 文件");
+    return context;
+  }
+
+  logger.info("开始链接到 Roadmap", {
+    hash: context.hash,
+    roadmapPath: context.roadmapFile.path,
+    notePath: context.containerFile.path,
+  });
+
+  try {
+    const aiService = context.plugin.aiService;
+    if (!aiService) {
+      throw new Error("AI服务未初始化");
+    }
+
+    // 读取 Roadmap 内容
+    const roadmapContent = await context.plugin.app.vault.read(context.roadmapFile);
+
+    // 调用 AI 服务查找插入位置
+    const insertPosition = await aiService.findRoadmapInsertPosition({
+      roadmapContent,
+      noteContent: context.content,
+      noteTitle: context.containerFile.basename,
+      notePath: context.containerFile.path,
+    });
+
+    logger.info("找到插入位置", {
+      section: insertPosition.section,
+      lineNumber: insertPosition.lineNumber,
+      reasoning: insertPosition.reasoning,
+    });
+
+    // 存储插入位置信息
+    context.roadmapInsertPosition = {
+      section: insertPosition.section,
+      lineNumber: insertPosition.lineNumber,
+      reasoning: insertPosition.reasoning,
+    };
+
+    // 在 Roadmap 中插入双向链接
+    await insertBacklinkToRoadmap(
+      context.plugin.app,
+      context.roadmapFile,
+      insertPosition,
+      context.containerFile
+    );
+
+    logger.info("链接到 Roadmap 完成", {
+      hash: context.hash,
+      section: insertPosition.section,
+    });
+
+    return context;
+  } catch (error) {
+    logger.error("链接到 Roadmap 失败", error);
+    throw error;
+  }
+}
+
+/**
+ * 在 Roadmap 中插入双向链接（辅助函数）
+ */
+async function insertBacklinkToRoadmap(
+  app: any,
+  roadmapFile: TFile,
+  position: { lineNumber: number; section: string },
+  noteFile: TFile
+): Promise<void> {
+  try {
+    // 读取 Roadmap 内容
+    const content = await app.vault.read(roadmapFile);
+    const lines = content.split("\n");
+
+    // 构建双向链接
+    const backlink = `- [[${noteFile.basename}]]`;
+
+    // 检查链接是否已存在
+    if (content.includes(backlink)) {
+      logger.info("链接已存在，跳过插入", {
+        roadmapPath: roadmapFile.path,
+        notePath: noteFile.path,
+      });
+      return;
+    }
+
+    // 在指定行号插入（行号从1开始，数组索引从0开始）
+    const insertIndex = Math.max(0, Math.min(position.lineNumber - 1, lines.length));
+    lines.splice(insertIndex, 0, backlink);
+
+    // 写回文件
+    await app.vault.modify(roadmapFile, lines.join("\n"));
+
+    logger.info("双向链接插入成功", {
+      roadmapPath: roadmapFile.path,
+      notePath: noteFile.path,
+      lineNumber: position.lineNumber,
+    });
+  } catch (error) {
+    logger.error("插入双向链接失败", error);
     throw error;
   }
 }

@@ -127,6 +127,9 @@ export class FileOrganizerSettings {
   // 元数据模板（阶段2）
   enableEnhancedMetadata = false;    // 启用增强元数据
 
+  // 智能分类（阶段3）
+  enableIntelligentClassification = false; // 启用智能分类系统
+
   // Roadmap关联（阶段4）
   enableRoadmapLinking = false;      // 启用Roadmap自动关联
   roadmapFolder = "01.Roadmap";      // Roadmap文件夹名称
