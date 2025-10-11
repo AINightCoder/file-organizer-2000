@@ -99,8 +99,8 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
 
         try {
           // 直接调用 Inbox 处理流程
-          if (plugin.inbox) {
-            await plugin.inbox.processFile(activeFile);
+          if (plugin.inbox && plugin.inbox.processInboxFile) {
+            await plugin.inbox.processInboxFile(activeFile);
             addLog('✅ 处理完成');
             new Notice('笔记处理完成');
           } else {
@@ -185,9 +185,9 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
 
         try {
           // 调用 Inbox 的处理流程
-          if (plugin.inbox) {
+          if (plugin.inbox && plugin.inbox.processInboxFile) {
             addLog(`  🔄 开始完整处理流程...`);
-            await plugin.inbox.processFile(file);
+            await plugin.inbox.processInboxFile(file);
             addLog(`  ✅ 处理完成: ${file.basename}`);
           } else {
             addLog(`  ⚠️ Inbox 未初始化，移动到 Inbox 文件夹`);
