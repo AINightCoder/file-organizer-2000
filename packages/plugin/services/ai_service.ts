@@ -533,18 +533,38 @@ export class AIService {
         throw new Error("Content and filename are required");
       }
 
-      const prompt = customPrompt || `分析以下笔记内容，按照单一知识点原则拆分成独立的原子化笔记。
+      // 构建基础 prompt，并确保无论是否提供自定义 prompt 都包含原始内容
+      // 1) 允许在自定义 prompt 中通过 ${filename}/${content} 占位符注入
+      // 2) 若自定义 prompt 未包含占位符，则在末尾追加标准化上下文块
+      const defaultPrompt = '分析以下笔记内容，按照单一知识点原则拆分成独立的原子化笔记。\n\n要求：\n1. 每个笔记专注一个核心概念或知识点\n2. 保持每个笔记的语义完整性和独立性\n3. 为每个笔记提供清晰的标题和知识点说明\n4. 如果内容本身已经是单一知识点，返回包含原内容的单个笔记\n\n原文件名：${filename}\n\n笔记内容：\n${content}';
 
-要求：
-1. 每个笔记专注一个核心概念或知识点
-2. 保持每个笔记的语义完整性和独立性
-3. 为每个笔记提供清晰的标题和知识点说明
-4. 如果内容本身已经是单一知识点，返回包含原内容的单个笔记
+      const usingCustom = !!customPrompt?.trim();
+      const basePrompt = usingCustom ? customPrompt!.trim() : defaultPrompt;
 
-原文件名：${filename}
+      // 先做占位符替换（如果有）
+      let prompt = basePrompt
+        .replace(/\${filename}/g, filename)
+        .replace(/\${content}/g, content);
 
-笔记内容：
-${content}`;
+      if (usingCustom) {
+        // 自定义指令缺少必要信息时，补充标准化上下文，避免遗漏原文
+        const customHasFilename = /\$\{filename\}/.test(customPrompt!);
+        const customHasContent = /\$\{content\}/.test(customPrompt!);
+
+        // 如果原文未被显式注入，则在结尾补充一段上下文
+        if (!customHasFilename || !customHasContent) {
+          const appendixParts: string[] = [];
+          if (!customHasFilename) {
+            appendixParts.push(`原文件名：${filename}`);
+          }
+          if (!customHasContent) {
+            appendixParts.push(`笔记内容：\n${content}`);
+          }
+          if (appendixParts.length > 0) {
+            prompt = `${prompt}\n\n${appendixParts.join('\n\n')}`;
+          }
+        }
+      }
 
       const response = await generateObject({
         model: this.model,

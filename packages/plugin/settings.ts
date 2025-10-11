@@ -117,12 +117,7 @@ export class FileOrganizerSettings {
   splitStrategy: "atomic" | "length" | "both" = "both";
 
   // AI 提示词
-  atomicSplitPrompt = `分析以下笔记内容，按照单一知识点原则拆分成独立的原子化笔记。
-要求：
-1. 每个笔记专注一个核心概念或知识点
-2. 保持每个笔记的语义完整性和独立性
-3. 为每个笔记提供清晰的标题和知识点说明
-4. 如果内容本身已经是单一知识点，返回原内容即可`;
+  atomicSplitPrompt = '分析以下笔记内容，按照单一知识点原则拆分成独立的原子化笔记。\n\n要求：\n1. 每个笔记专注一个核心概念或知识点\n2. 保持每个笔记的语义完整性和独立性\n3. 为每个笔记提供清晰的标题和知识点说明\n4. 如果内容本身已经是单一知识点，返回包含原内容的单个笔记\n\n原文件名：${filename}\n\n笔记内容：\n${content}';
 
   // 元数据模板（阶段2）
   enableEnhancedMetadata = false;    // 启用增强元数据
