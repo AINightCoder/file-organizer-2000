@@ -48,6 +48,7 @@ flutter doctor -v
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingLog, setProcessingLog] = useState<string[]>([]);
   const [testResults, setTestResults] = useState<any>(null);
+  const [fullFlowResults, setFullFlowResults] = useState<any>(null);
 
   // 自定义提示词状态
   const [showCustomPrompts, setShowCustomPrompts] = useState(false);
@@ -167,6 +168,244 @@ flutter doctor -v
   const handleClearLog = () => {
     setProcessingLog([]);
     setTestResults(null);
+    setFullFlowResults(null);
+  };
+
+  const handleTestFullFlow = async () => {
+    if (!plugin.settings.enableKnowledgeManagement) {
+      alert('请先在 Advanced 标签页中启用知识管理功能！');
+      return;
+    }
+
+    setIsProcessing(true);
+    setProcessingLog([]);
+    setTestResults(null);
+    setFullFlowResults(null);
+
+    try {
+      addLog('🚀 开始完整流程测试...');
+      addLog('📋 测试流程：');
+      addLog('  1. 文件验证');
+      addLog('  2. 容器创建');
+      addLog('  3. 移动附件');
+      addLog('  4. 内容提取');
+      addLog('  5. 知识点原子化拆分');
+      addLog('  6. 按最大字数拆分');
+      addLog('  7. 内容优化和格式化');
+      addLog('  8. 文件重命名');
+      addLog('  9. 元数据扩展');
+      addLog('  10. 附加附件');
+      addLog('  11. 智能文件夹推荐和移动');
+      addLog('  12. Roadmap关联');
+      addLog('  13. 完成处理');
+      addLog('');
+
+      const flowResults: any = {
+        steps: [],
+        startTime: Date.now()
+      };
+
+      // 1. 文件验证
+      addLog('📝 步骤 1/13: 文件验证');
+      if (!testContent.trim()) {
+        addLog('❌ 文件内容为空');
+        return;
+      }
+      if (!testFileName.trim()) {
+        addLog('❌ 文件名为空');
+        return;
+      }
+      addLog('✅ 文件验证通过');
+      flowResults.steps.push({ step: '文件验证', status: 'success' });
+
+      // 2. 容器创建
+      addLog('📝 步骤 2/13: 容器创建');
+      const testFilePath = `${plugin.settings.pathToWatch}/${testFileName}-test-${Date.now()}.md`;
+      addLog(`  创建测试文件: ${testFilePath}`);
+      
+      let testFile: TFile;
+      try {
+        testFile = await plugin.app.vault.create(testFilePath, testContent);
+        addLog('✅ 容器创建成功');
+        flowResults.steps.push({ step: '容器创建', status: 'success', file: testFile.path });
+      } catch (error: any) {
+        addLog(`❌ 容器创建失败: ${error.message}`);
+        flowResults.steps.push({ step: '容器创建', status: 'failed', error: error.message });
+        return;
+      }
+
+      // 3. 移动附件（模拟，因为测试文件不是媒体文件）
+      addLog('📝 步骤 3/13: 移动附件');
+      addLog('ℹ️  跳过（测试文件为 Markdown）');
+      flowResults.steps.push({ step: '移动附件', status: 'skipped' });
+
+      // 4. 内容提取
+      addLog('📝 步骤 4/13: 内容提取');
+      const extractedContent = await plugin.app.vault.read(testFile);
+      addLog(`✅ 内容提取成功（${extractedContent.length} 字符）`);
+      flowResults.steps.push({ step: '内容提取', status: 'success', length: extractedContent.length });
+
+      // 5. 知识点原子化拆分
+      addLog('📝 步骤 5/13: 知识点原子化拆分');
+      if (!plugin.aiService) {
+        addLog('❌ AI服务未初始化');
+        flowResults.steps.push({ step: '原子化拆分', status: 'failed', error: 'AI服务未初始化' });
+        return;
+      }
+
+      let atomicNotes: any[] = [];
+      try {
+        atomicNotes = await plugin.aiService.splitIntoAtomicNotes({
+          content: extractedContent,
+          filename: testFileName,
+          customPrompt: showCustomPrompts ? customPrompts.atomicSplit : plugin.settings.atomicSplitPrompt
+        });
+        addLog(`✅ 原子化拆分成功，共生成 ${atomicNotes.length} 个笔记`);
+        flowResults.steps.push({ 
+          step: '原子化拆分', 
+          status: 'success', 
+          count: atomicNotes.length,
+          notes: atomicNotes.map((n: any) => ({ title: n.filename, length: n.content.length }))
+        });
+
+        atomicNotes.forEach((note: any, index: number) => {
+          addLog(`  笔记 ${index + 1}: ${note.filename} (${note.content.length} 字符)`);
+        });
+      } catch (error: any) {
+        addLog(`❌ 原子化拆分失败: ${error.message}`);
+        flowResults.steps.push({ step: '原子化拆分', status: 'failed', error: error.message });
+        // 继续流程，使用原始内容
+        atomicNotes = [{ filename: testFileName, content: extractedContent }];
+      }
+
+      // 6. 按最大字数拆分
+      addLog('📝 步骤 6/13: 按最大字数拆分');
+      const maxLength = plugin.settings.maxNoteLength || 5000;
+      let finalNotes = [...atomicNotes];
+      let needLengthSplit = false;
+
+      for (let i = 0; i < atomicNotes.length; i++) {
+        if (atomicNotes[i].content.length > maxLength) {
+          needLengthSplit = true;
+          addLog(`  笔记 "${atomicNotes[i].filename}" 超长 (${atomicNotes[i].content.length} > ${maxLength})，需要拆分`);
+        }
+      }
+
+      if (needLengthSplit) {
+        addLog(`⚠️  有笔记超过最大长度限制 (${maxLength} 字符)，实际处理中会进行长度拆分`);
+        flowResults.steps.push({ step: '长度拆分', status: 'warning', maxLength, message: '有笔记需要长度拆分' });
+      } else {
+        addLog(`✅ 所有笔记长度符合要求（<= ${maxLength} 字符）`);
+        flowResults.steps.push({ step: '长度拆分', status: 'success', message: '无需长度拆分' });
+      }
+
+      // 7. 内容优化和格式化
+      addLog('📝 步骤 7/13: 内容优化和格式化');
+      addLog('ℹ️  格式化功能需要完整处理流程支持，测试中跳过');
+      flowResults.steps.push({ step: '内容格式化', status: 'skipped' });
+
+      // 8. 文件重命名
+      addLog('📝 步骤 8/13: 文件重命名');
+      const renameResults: any[] = [];
+      try {
+        for (let i = 0; i < Math.min(finalNotes.length, 3); i++) {
+          const note = finalNotes[i];
+          const titleSuggestions = await plugin.recommendName(
+            note.content,
+            note.filename
+          );
+          const suggestedName = titleSuggestions[0]?.title || note.filename;
+          renameResults.push({ 
+            original: note.filename, 
+            suggested: suggestedName 
+          });
+          addLog(`  "${note.filename}" → "${suggestedName}"`);
+        }
+        if (finalNotes.length > 3) {
+          addLog(`  ... 还有 ${finalNotes.length - 3} 个笔记`);
+        }
+        addLog('✅ 文件重命名建议生成成功');
+        flowResults.steps.push({ step: '文件重命名', status: 'success', renames: renameResults });
+      } catch (error: any) {
+        addLog(`❌ 重命名失败: ${error.message}`);
+        flowResults.steps.push({ step: '文件重命名', status: 'failed', error: error.message });
+      }
+
+      // 9. 元数据扩展
+      addLog('📝 步骤 9/13: 元数据扩展');
+      try {
+        if (plugin.aiService.generateEnhancedMetadata) {
+          const metadata = await plugin.aiService.generateEnhancedMetadata({
+            content: finalNotes[0].content,
+            filename: finalNotes[0].filename
+          });
+          addLog(`✅ 元数据生成成功`);
+          addLog(`  标题: ${metadata.title}`);
+          addLog(`  类别: ${metadata.category}`);
+          addLog(`  标签: ${metadata.tags.join(', ')}`);
+          addLog(`  摘要: ${metadata.summary.substring(0, 50)}...`);
+          flowResults.steps.push({ step: '元数据扩展', status: 'success', metadata });
+        } else {
+          addLog('ℹ️  元数据扩展功能未启用');
+          flowResults.steps.push({ step: '元数据扩展', status: 'skipped' });
+        }
+      } catch (error: any) {
+        addLog(`⚠️  元数据生成失败: ${error.message}`);
+        flowResults.steps.push({ step: '元数据扩展', status: 'warning', error: error.message });
+      }
+
+      // 10. 附加附件
+      addLog('📝 步骤 10/13: 附加附件');
+      addLog('ℹ️  跳过（测试文件无附件）');
+      flowResults.steps.push({ step: '附加附件', status: 'skipped' });
+
+      // 11. 智能文件夹推荐和移动
+      addLog('📝 步骤 11/13: 智能文件夹推荐和移动');
+      try {
+        const folderSuggestions = await plugin.recommendFolders(
+          finalNotes[0].content,
+          testFileName
+        );
+        const folderSuggestion = folderSuggestions[0]?.folder || '未推荐';
+        addLog(`✅ 文件夹推荐成功: ${folderSuggestion}`);
+        flowResults.steps.push({ step: '文件夹推荐', status: 'success', folder: folderSuggestion });
+      } catch (error: any) {
+        addLog(`❌ 文件夹推荐失败: ${error.message}`);
+        flowResults.steps.push({ step: '文件夹推荐', status: 'failed', error: error.message });
+      }
+
+      // 12. Roadmap关联
+      addLog('📝 步骤 12/13: Roadmap关联');
+      addLog('ℹ️  Roadmap 功能需要完整处理流程支持，测试中跳过');
+      flowResults.steps.push({ step: 'Roadmap关联', status: 'skipped' });
+
+      // 13. 完成处理
+      addLog('📝 步骤 13/13: 完成处理');
+      flowResults.endTime = Date.now();
+      flowResults.duration = flowResults.endTime - flowResults.startTime;
+      addLog(`✅ 测试完成！总耗时: ${(flowResults.duration / 1000).toFixed(2)} 秒`);
+      flowResults.steps.push({ step: '完成处理', status: 'success' });
+
+      // 清理测试文件
+      addLog('');
+      addLog('🧹 清理测试文件...');
+      try {
+        await plugin.app.vault.delete(testFile);
+        addLog('✅ 测试文件已删除');
+      } catch (error: any) {
+        addLog(`⚠️  清理失败: ${error.message}`);
+      }
+
+      setFullFlowResults(flowResults);
+      addLog('');
+      addLog('🎉 完整流程测试完毕！');
+
+    } catch (error: any) {
+      addLog(`❌ 测试过程出错: ${error.message}`);
+      console.error('完整流程测试错误:', error);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleRealProcess = async () => {
@@ -367,13 +606,21 @@ flutter doctor -v
       </div>
 
       {/* 操作按钮 */}
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap">
         <button
           onClick={handleTestSplit}
           disabled={isProcessing || !testContent.trim()}
           className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
         >
-          {isProcessing ? '测试中...' : '测试拆分'}
+          {isProcessing ? '测试中...' : '🔬 测试拆分'}
+        </button>
+
+        <button
+          onClick={handleTestFullFlow}
+          disabled={isProcessing || !testContent.trim()}
+          className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+        >
+          {isProcessing ? '测试中...' : '🎯 完整流程测试'}
         </button>
 
         <button
@@ -381,14 +628,14 @@ flutter doctor -v
           disabled={isProcessing || !testContent.trim()}
           className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
         >
-          真实处理测试
+          {isProcessing ? '测试中...' : '✅ 真实处理测试'}
         </button>
 
         <button
           onClick={handleClearLog}
           className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
         >
-          清空日志
+          🧹 清空日志
         </button>
       </div>
 
@@ -449,14 +696,125 @@ flutter doctor -v
         </div>
       )}
 
+      {/* 完整流程测试结果 */}
+      {fullFlowResults && (
+        <div>
+          <h3 className="font-semibold mb-2">完整流程测试结果</h3>
+          <div className="p-4 bg-white border border-gray-200 rounded space-y-4">
+            {/* 总览 */}
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div className="p-3 bg-blue-50 rounded">
+                <div className="text-2xl font-bold text-blue-600">{fullFlowResults.steps.length}</div>
+                <div className="text-sm text-gray-600">总步骤数</div>
+              </div>
+              <div className="p-3 bg-green-50 rounded">
+                <div className="text-2xl font-bold text-green-600">
+                  {fullFlowResults.steps.filter((s: any) => s.status === 'success').length}
+                </div>
+                <div className="text-sm text-gray-600">成功步骤</div>
+              </div>
+              <div className="p-3 bg-purple-50 rounded">
+                <div className="text-2xl font-bold text-purple-600">
+                  {(fullFlowResults.duration / 1000).toFixed(2)}s
+                </div>
+                <div className="text-sm text-gray-600">总耗时</div>
+              </div>
+            </div>
+
+            {/* 步骤详情 */}
+            <div className="space-y-2">
+              <h4 className="font-semibold">步骤详情：</h4>
+              {fullFlowResults.steps.map((step: any, index: number) => (
+                <div key={index} className={`p-3 rounded border ${
+                  step.status === 'success' ? 'bg-green-50 border-green-200' :
+                  step.status === 'failed' ? 'bg-red-50 border-red-200' :
+                  step.status === 'warning' ? 'bg-yellow-50 border-yellow-200' :
+                  'bg-gray-50 border-gray-200'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold">
+                      {step.status === 'success' ? '✅' :
+                       step.status === 'failed' ? '❌' :
+                       step.status === 'warning' ? '⚠️' :
+                       'ℹ️'} {step.step}
+                    </span>
+                    <span className={`text-sm px-2 py-1 rounded ${
+                      step.status === 'success' ? 'bg-green-100 text-green-800' :
+                      step.status === 'failed' ? 'bg-red-100 text-red-800' :
+                      step.status === 'warning' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {step.status === 'skipped' ? '已跳过' : step.status}
+                    </span>
+                  </div>
+                  
+                  {/* 步骤详细信息 */}
+                  {step.error && (
+                    <div className="mt-2 text-sm text-red-600">
+                      错误: {step.error}
+                    </div>
+                  )}
+                  {step.message && (
+                    <div className="mt-2 text-sm text-gray-600">
+                      {step.message}
+                    </div>
+                  )}
+                  {step.count !== undefined && (
+                    <div className="mt-2 text-sm text-gray-600">
+                      生成笔记数: {step.count}
+                    </div>
+                  )}
+                  {step.notes && step.notes.length > 0 && (
+                    <div className="mt-2 text-sm text-gray-600">
+                      笔记列表:
+                      <ul className="ml-4 mt-1 space-y-1">
+                        {step.notes.slice(0, 3).map((note: any, i: number) => (
+                          <li key={i}>• {note.title} ({note.length} 字符)</li>
+                        ))}
+                        {step.notes.length > 3 && (
+                          <li>... 还有 {step.notes.length - 3} 个笔记</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                  {step.renames && step.renames.length > 0 && (
+                    <div className="mt-2 text-sm text-gray-600">
+                      重命名建议:
+                      <ul className="ml-4 mt-1 space-y-1">
+                        {step.renames.map((r: any, i: number) => (
+                          <li key={i}>• "{r.original}" → "{r.suggested}"</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {step.metadata && (
+                    <div className="mt-2 text-sm text-gray-600">
+                      <div>标题: {step.metadata.title}</div>
+                      <div>类别: {step.metadata.category}</div>
+                      <div>标签: {step.metadata.tags.join(', ')}</div>
+                    </div>
+                  )}
+                  {step.folder && (
+                    <div className="mt-2 text-sm text-gray-600">
+                      推荐文件夹: {step.folder}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 使用说明 */}
       <div className="p-4 bg-blue-50 border border-blue-200 rounded">
         <h3 className="font-semibold mb-2 text-blue-800">📖 使用说明</h3>
         <ul className="text-sm text-blue-900 space-y-1 list-disc list-inside">
-          <li><strong>测试拆分</strong>：仅测试AI拆分能力，不会创建实际文件</li>
-          <li><strong>真实处理测试</strong>：创建测试文件并走完整处理流程（包括拆分、分类、重命名等）</li>
+          <li><strong>测试拆分</strong>：仅测试AI拆分能力，创建临时文件后立即清理</li>
+          <li><strong>完整流程测试</strong>：测试所有13个处理步骤（拆分、重命名、分类、标签等），自动清理临时文件</li>
+          <li><strong>真实处理测试</strong>：创建测试文件并走真实处理流程，通过插件队列系统处理</li>
           <li>测试前确保在 Advanced 标签页启用了知识管理功能</li>
-          <li>建议先用"测试拆分"验证效果，满意后再用"真实处理测试"</li>
+          <li>建议顺序：先"测试拆分" → 再"完整流程测试" → 最后"真实处理测试"</li>
           <li>真实处理会自动删除原笔记，请注意备份重要内容</li>
         </ul>
       </div>

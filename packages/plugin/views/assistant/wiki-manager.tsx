@@ -55,7 +55,7 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
     }
 
     // 确认操作
-    if (!confirm(`确认处理当前笔记？\n\n将按照知识管理流程进行拆分、分类等处理。\n原笔记将被删除，此操作不可撤销！`)) {
+    if (!confirm(`确认处理当前笔记？\n\n将按照知识管理流程进行完整处理：\n1. 内容拆分（如需要）\n2. 内容优化和格式化\n3. 文件重命名\n4. 元数据扩展\n5. 智能文件夹分类\n6. 标签推荐\n7. Roadmap关联\n\n原笔记可能被删除（如果需要拆分），此操作不可撤销！`)) {
       return;
     }
 
@@ -63,148 +63,330 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
     setProcessingLog([]);
 
     try {
-      addLog('🚀 开始处理笔记...');
-      addLog(`当前文件: ${activeFile.basename}`);
-      addLog(`内容长度: ${fileContent.length} 字符`);
+      addLog('🚀 开始完整处理流程...');
+      addLog(`📋 当前文件: ${activeFile.basename}`);
+      addLog(`📏 内容长度: ${fileContent.length} 字符`);
+      addLog('');
 
-      // 检查是否需要拆分
-      if (fileContent.length < plugin.settings.minNoteLength) {
-        addLog(`⚠️ 内容太短（< ${plugin.settings.minNoteLength} 字符），不建议拆分`);
-        new Notice('笔记内容太短，不建议拆分');
-        return;
-      }
-
-      // 调用AI服务进行拆分
+      // 检查AI服务
       if (!plugin.aiService) {
         addLog('❌ AI服务未初始化');
         new Notice('AI服务未初始化');
         return;
       }
 
-      addLog('正在调用AI进行拆分分析...');
+      // ===== 步骤1: 判断是否需要拆分 =====
+      addLog('📝 步骤1: 检查是否需要拆分');
+      let needsSplit = false;
+      let atomicNotes: any[] = [];
 
-      const atomicNotes = await plugin.aiService.splitIntoAtomicNotes({
-        content: fileContent,
-        filename: activeFile.basename,
-        customPrompt: plugin.settings.atomicSplitPrompt
-      });
-
-      addLog(`✅ 拆分分析完成，识别出 ${atomicNotes.length} 个知识点`);
-
-      // 如果只有一个笔记且内容相同，说明无需拆分
-      if (atomicNotes.length === 1 &&
-          atomicNotes[0].content.trim() === fileContent.trim()) {
-        addLog('ℹ️ 笔记已经是单一知识点，无需拆分');
-        addLog('🔄 直接进行后续处理（分类、标签、重命名等）...');
-
+      if (fileContent.length >= plugin.settings.minNoteLength && plugin.settings.enableAtomicSplit) {
+        addLog('  正在分析知识点...');
+        
         try {
-          // 直接调用 Inbox 处理流程
-          if (plugin.inbox && plugin.inbox.processInboxFile) {
-            await plugin.inbox.processInboxFile(activeFile);
-            addLog('✅ 处理完成');
-            new Notice('笔记处理完成');
-          } else {
-            // 如果 Inbox 未初始化，移动到 Inbox 文件夹
-            addLog('⚠️ Inbox 未初始化，移动到 Inbox 文件夹');
-            const inboxPath = plugin.settings.pathToWatch;
-            const newPath = `${inboxPath}/${activeFile.name}`;
-            await plugin.app.fileManager.renameFile(activeFile, newPath);
-            addLog('✅ 已移动到 Inbox，将自动处理');
-            new Notice('已移动到 Inbox 进行处理');
-          }
-        } catch (error) {
-          addLog(`❌ 处理失败: ${error.message}`);
-          throw error;
-        }
-        return;
-      }
-
-      // 检查长度并可能进行二次拆分
-      const finalNotes = [];
-      for (const note of atomicNotes) {
-        if (note.content.length > plugin.settings.maxNoteLength) {
-          addLog(`⚠️ 笔记 "${note.filename}" 超长，进行长度拆分...`);
-
-          const fragments = await plugin.aiService.splitByLength({
-            content: note.content,
-            maxLength: plugin.settings.maxNoteLength
+          atomicNotes = await plugin.aiService.splitIntoAtomicNotes({
+            content: fileContent,
+            filename: activeFile.basename,
+            customPrompt: plugin.settings.atomicSplitPrompt
           });
 
-          fragments.forEach((fragment, index) => {
+          // 判断是否真的需要拆分
+          if (atomicNotes.length > 1) {
+            needsSplit = true;
+            addLog(`  ✅ 识别出 ${atomicNotes.length} 个知识点，需要拆分`);
+          } else if (atomicNotes.length === 1 && atomicNotes[0].content.trim() === fileContent.trim()) {
+            addLog('  ℹ️ 已经是单一知识点，无需拆分');
+          } else {
+            addLog('  ℹ️ 无需拆分');
+          }
+        } catch (error: any) {
+          addLog(`  ⚠️ 拆分分析失败: ${error.message}`);
+          addLog('  ℹ️ 将作为单一笔记处理');
+        }
+      } else {
+        addLog(`  ℹ️ 内容长度 ${fileContent.length} < ${plugin.settings.minNoteLength}，跳过拆分`);
+      }
+      addLog('');
+
+      // ===== 步骤2: 执行拆分（如需要）=====
+      let filesToProcess: TFile[] = [];
+      
+      if (needsSplit && atomicNotes.length > 1) {
+        addLog('📝 步骤2: 执行拆分');
+        
+        // 检查长度并进行二次拆分
+        const finalNotes = [];
+        for (const note of atomicNotes) {
+          if (note.content.length > plugin.settings.maxNoteLength) {
+            addLog(`  ⚠️ 笔记 "${note.filename}" 超长 (${note.content.length} > ${plugin.settings.maxNoteLength})，进行长度拆分...`);
+            
+            try {
+              const fragments = await plugin.aiService.splitByLength({
+                content: note.content,
+                maxLength: plugin.settings.maxNoteLength
+              });
+
+              fragments.forEach((fragment: string, index: number) => {
+                finalNotes.push({
+                  filename: `${note.filename} ${index + 1}`,
+                  content: fragment,
+                  knowledgePoint: note.knowledgePoint,
+                  length: fragment.length
+                });
+              });
+              addLog(`    拆分为 ${fragments.length} 个片段`);
+            } catch (error: any) {
+              addLog(`    ❌ 长度拆分失败: ${error.message}`);
+              // 保留原笔记
+              finalNotes.push(note);
+            }
+          } else {
             finalNotes.push({
-              filename: `${note.filename} ${index + 1}`,
-              content: fragment,
+              filename: note.filename,
+              content: note.content,
               knowledgePoint: note.knowledgePoint,
-              length: fragment.length
+              length: note.content.length
             });
-          });
-        } else {
-          finalNotes.push({
-            filename: note.filename,
-            content: note.content,
-            knowledgePoint: note.knowledgePoint,
-            length: note.content.length
-          });
-        }
-      }
-
-      addLog(`✅ 最终将拆分为 ${finalNotes.length} 个笔记`);
-
-      // 立即执行拆分
-      addLog('📝 开始创建拆分笔记...');
-
-      const targetFolder = activeFile.parent;
-      const createdFiles: TFile[] = [];
-
-      for (let i = 0; i < finalNotes.length; i++) {
-        const note = finalNotes[i];
-        addLog(`创建笔记 ${i + 1}/${finalNotes.length}: ${note.filename}`);
-
-        try {
-          const newFilePath = `${targetFolder.path}/${note.filename}.md`;
-          const newFile = await plugin.app.vault.create(newFilePath, note.content);
-          createdFiles.push(newFile);
-          addLog(`✅ 已创建: ${newFile.basename}`);
-        } catch (error) {
-          addLog(`❌ 创建失败: ${note.filename} - ${error.message}`);
-          throw error;
-        }
-      }
-
-      // 删除原笔记
-      addLog('🗑️ 删除原笔记...');
-      await plugin.app.vault.delete(activeFile);
-      addLog('✅ 原笔记已删除');
-
-      // 直接处理每个拆分笔记，而不是移动到 Inbox
-      addLog(`📋 开始处理 ${createdFiles.length} 个拆分笔记...`);
-
-      for (let i = 0; i < createdFiles.length; i++) {
-        const file = createdFiles[i];
-        addLog(`\n--- 处理笔记 ${i + 1}/${createdFiles.length}: ${file.basename} ---`);
-
-        try {
-          // 调用 Inbox 的处理流程
-          if (plugin.inbox && plugin.inbox.processInboxFile) {
-            addLog(`  🔄 开始完整处理流程...`);
-            await plugin.inbox.processInboxFile(file);
-            addLog(`  ✅ 处理完成: ${file.basename}`);
-          } else {
-            addLog(`  ⚠️ Inbox 未初始化，移动到 Inbox 文件夹`);
-            const inboxPath = plugin.settings.pathToWatch;
-            const newPath = `${inboxPath}/${file.name}`;
-            await plugin.app.fileManager.renameFile(file, newPath);
           }
-        } catch (error) {
-          addLog(`  ❌ 处理失败: ${file.basename} - ${error.message}`);
+        }
+
+        addLog(`  最终拆分为 ${finalNotes.length} 个笔记`);
+        
+        // 创建拆分笔记
+        const targetFolder = activeFile.parent;
+        for (let i = 0; i < finalNotes.length; i++) {
+          const note = finalNotes[i];
+          addLog(`  创建笔记 ${i + 1}/${finalNotes.length}: ${note.filename}`);
+
+          try {
+            const newFilePath = `${targetFolder.path}/${note.filename}.md`;
+            const newFile = await plugin.app.vault.create(newFilePath, note.content);
+            filesToProcess.push(newFile);
+            addLog(`    ✅ 已创建: ${newFile.basename}`);
+          } catch (error: any) {
+            addLog(`    ❌ 创建失败: ${note.filename} - ${error.message}`);
+          }
+        }
+
+        // 删除原笔记
+        addLog('  🗑️ 删除原笔记...');
+        await plugin.app.vault.delete(activeFile);
+        addLog('  ✅ 原笔记已删除');
+      } else {
+        addLog('📝 步骤2: 跳过拆分，直接处理当前笔记');
+        filesToProcess = [activeFile];
+      }
+      addLog('');
+
+      // ===== 步骤3-13: 处理每个笔记 =====
+      addLog(`📋 开始处理 ${filesToProcess.length} 个笔记...`);
+      addLog('');
+
+      for (let i = 0; i < filesToProcess.length; i++) {
+        const file = filesToProcess[i];
+        addLog(`${'='.repeat(50)}`);
+        addLog(`📄 处理笔记 ${i + 1}/${filesToProcess.length}: ${file.basename}`);
+        addLog(`${'='.repeat(50)}`);
+
+        try {
+          let currentFile = file;
+          let content = await plugin.app.vault.read(currentFile);
+
+          // 步骤3: 内容优化和格式化
+          addLog('📝 步骤3: 内容优化和格式化');
+          if (plugin.settings.enableDocumentClassification) {
+            try {
+              const formattedContent = await plugin.formatContent(content, currentFile.basename);
+              if (formattedContent && formattedContent !== content) {
+                await plugin.app.vault.modify(currentFile, formattedContent);
+                content = formattedContent;
+                addLog('  ✅ 内容格式化完成');
+              } else {
+                addLog('  ℹ️ 内容无需格式化');
+              }
+            } catch (error: any) {
+              addLog(`  ⚠️ 格式化失败: ${error.message}`);
+            }
+          } else {
+            addLog('  ℹ️ 格式化功能未启用');
+          }
+
+          // 步骤4: 文件重命名
+          addLog('📝 步骤4: 文件重命名');
+          try {
+            const titleSuggestions = await plugin.recommendName(content, currentFile.basename);
+            if (titleSuggestions && titleSuggestions.length > 0) {
+              const newName = titleSuggestions[0].title;
+              if (newName && newName !== currentFile.basename && currentFile.parent) {
+                addLog(`  建议名称: ${newName}`);
+                const newPath = `${currentFile.parent.path}/${newName}.md`;
+                await plugin.app.fileManager.renameFile(currentFile, newPath);
+                currentFile = plugin.app.vault.getAbstractFileByPath(newPath) as TFile;
+                addLog(`  ✅ 重命名为: ${newName}`);
+              } else {
+                addLog('  ℹ️ 文件名已合适，无需重命名');
+              }
+            }
+          } catch (error: any) {
+            addLog(`  ⚠️ 重命名失败: ${error.message}`);
+          }
+
+          // 步骤5: 元数据扩展
+          addLog('📝 步骤5: 元数据扩展');
+          let metadata: any = null;
+          if (plugin.settings.enableEnhancedMetadata && plugin.aiService.generateEnhancedMetadata) {
+            try {
+              metadata = await plugin.aiService.generateEnhancedMetadata({
+                content,
+                filename: currentFile.basename
+              });
+              addLog(`  ✅ 元数据生成成功`);
+              addLog(`    标题: ${metadata.title}`);
+              addLog(`    类别: ${metadata.category}`);
+              addLog(`    标签: ${metadata.tags?.join(', ') || '无'}`);
+            } catch (error: any) {
+              addLog(`  ⚠️ 元数据生成失败: ${error.message}`);
+            }
+          } else {
+            addLog('  ℹ️ 元数据扩展功能未启用');
+          }
+
+          // 步骤6: 应用元数据
+          if (metadata) {
+            addLog('📝 步骤6: 应用元数据');
+            try {
+              // 读取当前内容并更新
+              content = await plugin.app.vault.read(currentFile);
+              
+              // 构建YAML前言
+              const yamlFrontmatter = `---
+id: "${metadata.id || `${Date.now()}-${currentFile.basename}`}"
+title: "${metadata.title || currentFile.basename}"
+version: "${metadata.version || '1.0'}"
+create: ${metadata.create || new Date().toISOString().split('T')[0]}
+update: ${metadata.update || new Date().toISOString().split('T')[0]}
+source: "${metadata.source || '个人笔记'}"
+credibility: ${metadata.credibility || 5}
+cate: "${metadata.category || ''}"
+subcate: "${metadata.subcategory || ''}"
+tags: [${metadata.tags?.map((t: string) => `"${t}"`).join(', ') || ''}]
+summary: "${metadata.summary || ''}"
+---
+
+`;
+              
+              // 如果已有YAML前言，替换；否则添加
+              if (content.startsWith('---')) {
+                const endIndex = content.indexOf('---', 3);
+                if (endIndex !== -1) {
+                  content = yamlFrontmatter + content.substring(endIndex + 4);
+                } else {
+                  content = yamlFrontmatter + content;
+                }
+              } else {
+                content = yamlFrontmatter + content;
+              }
+              
+              await plugin.app.vault.modify(currentFile, content);
+              addLog('  ✅ 元数据已应用');
+            } catch (error: any) {
+              addLog(`  ⚠️ 应用元数据失败: ${error.message}`);
+            }
+          }
+
+          // 步骤7: 智能文件夹分类
+          addLog('📝 步骤7: 智能文件夹分类');
+          let targetFolder = currentFile.parent?.path || '';
+          try {
+            const folderSuggestions = await plugin.recommendFolders(content, currentFile.basename);
+            if (folderSuggestions && folderSuggestions.length > 0) {
+              const suggestedFolder = folderSuggestions[0].folder;
+              addLog(`  推荐文件夹: ${suggestedFolder}`);
+              
+              // 确保文件夹存在
+              const folderPath = suggestedFolder.startsWith('/') ? suggestedFolder.substring(1) : suggestedFolder;
+              if (!plugin.app.vault.getAbstractFileByPath(folderPath)) {
+                await plugin.createFolders(folderPath);
+                addLog(`  ✅ 创建文件夹: ${folderPath}`);
+              }
+              
+              // 移动文件
+              const newPath = `${folderPath}/${currentFile.name}`;
+              await plugin.app.fileManager.renameFile(currentFile, newPath);
+              currentFile = plugin.app.vault.getAbstractFileByPath(newPath) as TFile;
+              targetFolder = folderPath;
+              addLog(`  ✅ 已移动到: ${folderPath}`);
+            } else {
+              addLog('  ℹ️ 无文件夹推荐');
+            }
+          } catch (error: any) {
+            addLog(`  ⚠️ 文件夹分类失败: ${error.message}`);
+          }
+
+          // 步骤8: 标签推荐
+          addLog('📝 步骤8: 标签推荐');
+          if (plugin.settings.useSimilarTags) {
+            try {
+              const tagSuggestions = await plugin.getTagSuggestions(content, currentFile.basename);
+              if (tagSuggestions && tagSuggestions.length > 0) {
+                addLog(`  推荐标签: ${tagSuggestions.join(', ')}`);
+                
+                // 添加标签到内容
+                content = await plugin.app.vault.read(currentFile);
+                const tagsLine = `\n\n${tagSuggestions.map((tag: string) => `#${tag}`).join(' ')}`;
+                await plugin.app.vault.append(currentFile, tagsLine);
+                addLog('  ✅ 标签已添加');
+              } else {
+                addLog('  ℹ️ 无标签推荐');
+              }
+            } catch (error: any) {
+              addLog(`  ⚠️ 标签推荐失败: ${error.message}`);
+            }
+          } else {
+            addLog('  ℹ️ 标签推荐功能未启用');
+          }
+
+          // 步骤9: Roadmap关联
+          addLog('📝 步骤9: Roadmap关联');
+          if (plugin.settings.enableRoadmapIntegration && metadata?.category) {
+            try {
+              // 查找或创建Roadmap
+              const roadmapPath = `${targetFolder}/01.Roadmap/Roadmap.md`;
+              let roadmapFile = plugin.app.vault.getAbstractFileByPath(roadmapPath) as TFile;
+              
+              if (!roadmapFile) {
+                addLog('  创建Roadmap文件...');
+                await plugin.createFolders(`${targetFolder}/01.Roadmap`);
+                roadmapFile = await plugin.app.vault.create(roadmapPath, `# ${metadata.category} Roadmap\n\n`);
+                addLog(`  ✅ 已创建: ${roadmapPath}`);
+              }
+              
+              // 添加链接到Roadmap
+              const linkText = `\n- [[${currentFile.basename}]]`;
+              await plugin.app.vault.append(roadmapFile, linkText);
+              addLog(`  ✅ 已关联到Roadmap`);
+            } catch (error: any) {
+              addLog(`  ⚠️ Roadmap关联失败: ${error.message}`);
+            }
+          } else {
+            addLog('  ℹ️ Roadmap关联功能未启用');
+          }
+
+          addLog(`✅ 笔记处理完成: ${currentFile.basename}`);
+          addLog('');
+
+        } catch (error: any) {
+          addLog(`❌ 处理笔记失败: ${file.basename}`);
+          addLog(`   错误: ${error.message}`);
           console.error(`处理 ${file.basename} 失败:`, error);
         }
       }
 
-      addLog('\n🎉 全部处理完成！');
-      new Notice(`成功拆分并处理了 ${createdFiles.length} 个笔记`);
+      addLog('');
+      addLog('🎉 全部处理完成！');
+      new Notice(`成功处理了 ${filesToProcess.length} 个笔记`);
 
-    } catch (error) {
+    } catch (error: any) {
       addLog(`❌ 处理失败: ${error.message}`);
       console.error('处理笔记失败:', error);
       new Notice('处理失败: ' + error.message);
@@ -230,7 +412,7 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
       addLog('✅ 已移动到 Inbox，将自动处理');
       new Notice('已移动到 Inbox，将自动处理');
 
-    } catch (error) {
+    } catch (error: any) {
       addLog(`❌ 移动失败: ${error.message}`);
       new Notice('移动到 Inbox 失败: ' + error.message);
     }

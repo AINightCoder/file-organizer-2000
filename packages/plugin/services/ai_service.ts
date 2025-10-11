@@ -329,7 +329,10 @@ export class AIService {
         "minimax": minimax(this.config.MINIMAX_MODEL || "minimax"),
         "siliconflow": siliconflow(this.config.SILICONFLOW_MODEL || "siliconflow"),
         "ollama": ollama(this.config.OLLAMA_MODEL || "phi4"),
-        "openai": createOpenAI({apiKey: this.config.OPENAI_API_KEY,})(this.config.OPENAI_MODEL || "gpt-4o"),
+        "openai": createOpenAI({
+          apiKey: this.config.OPENAI_API_KEY,
+          baseURL: this.config.OPENAI_BASE_URL || undefined,
+        })(this.config.OPENAI_MODEL || "gpt-4o"),
         "anthropic": createAnthropic({apiKey: this.config.ANTHROPIC_API_KEY,})(this.config.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620"),
         "google": google(this.config.GOOGLE_MODEL || "gemini-2.0-flash"), 
     };
