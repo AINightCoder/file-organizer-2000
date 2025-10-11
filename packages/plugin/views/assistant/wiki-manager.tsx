@@ -95,15 +95,27 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
       if (atomicNotes.length === 1 &&
           atomicNotes[0].content.trim() === fileContent.trim()) {
         addLog('ℹ️ 笔记已经是单一知识点，无需拆分');
-        addLog('📥 将移动到 Inbox 进行后续处理...');
+        addLog('🔄 直接进行后续处理（分类、标签、重命名等）...');
 
-        // 移动到 Inbox 进行后续处理（分类、标签等）
-        const inboxPath = plugin.settings.pathToWatch;
-        const newPath = `${inboxPath}/${activeFile.name}`;
-        await plugin.app.fileManager.renameFile(activeFile, newPath);
-
-        addLog('✅ 已移动到 Inbox，将自动进行分类、标签等处理');
-        new Notice('笔记无需拆分，已移动到 Inbox 进行后续处理');
+        try {
+          // 直接调用 Inbox 处理流程
+          if (plugin.inbox) {
+            await plugin.inbox.processFile(activeFile);
+            addLog('✅ 处理完成');
+            new Notice('笔记处理完成');
+          } else {
+            // 如果 Inbox 未初始化，移动到 Inbox 文件夹
+            addLog('⚠️ Inbox 未初始化，移动到 Inbox 文件夹');
+            const inboxPath = plugin.settings.pathToWatch;
+            const newPath = `${inboxPath}/${activeFile.name}`;
+            await plugin.app.fileManager.renameFile(activeFile, newPath);
+            addLog('✅ 已移动到 Inbox，将自动处理');
+            new Notice('已移动到 Inbox 进行处理');
+          }
+        } catch (error) {
+          addLog(`❌ 处理失败: ${error.message}`);
+          throw error;
+        }
         return;
       }
 
@@ -164,18 +176,33 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
       await plugin.app.vault.delete(activeFile);
       addLog('✅ 原笔记已删除');
 
-      // 将所有拆分笔记移动到 Inbox 进行后续处理
-      addLog('📥 将拆分笔记移动到 Inbox 进行后续处理...');
-      const inboxPath = plugin.settings.pathToWatch;
+      // 直接处理每个拆分笔记，而不是移动到 Inbox
+      addLog(`📋 开始处理 ${createdFiles.length} 个拆分笔记...`);
 
-      for (const file of createdFiles) {
-        const newPath = `${inboxPath}/${file.name}`;
-        await plugin.app.fileManager.renameFile(file, newPath);
-        addLog(`✅ 已移动: ${file.basename}`);
+      for (let i = 0; i < createdFiles.length; i++) {
+        const file = createdFiles[i];
+        addLog(`\n--- 处理笔记 ${i + 1}/${createdFiles.length}: ${file.basename} ---`);
+
+        try {
+          // 调用 Inbox 的处理流程
+          if (plugin.inbox) {
+            addLog(`  🔄 开始完整处理流程...`);
+            await plugin.inbox.processFile(file);
+            addLog(`  ✅ 处理完成: ${file.basename}`);
+          } else {
+            addLog(`  ⚠️ Inbox 未初始化，移动到 Inbox 文件夹`);
+            const inboxPath = plugin.settings.pathToWatch;
+            const newPath = `${inboxPath}/${file.name}`;
+            await plugin.app.fileManager.renameFile(file, newPath);
+          }
+        } catch (error) {
+          addLog(`  ❌ 处理失败: ${file.basename} - ${error.message}`);
+          console.error(`处理 ${file.basename} 失败:`, error);
+        }
       }
 
-      addLog('🎉 处理完成！所有笔记已移动到 Inbox 进行分类、标签等后续处理');
-      new Notice(`成功拆分为 ${finalNotes.length} 个笔记并移动到 Inbox`);
+      addLog('\n🎉 全部处理完成！');
+      new Notice(`成功拆分并处理了 ${createdFiles.length} 个笔记`);
 
     } catch (error) {
       addLog(`❌ 处理失败: ${error.message}`);
