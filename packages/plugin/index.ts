@@ -179,27 +179,18 @@ export default class FileOrganizer extends Plugin {
     formattingInstruction: string
   ): Promise<string> {
     try {
-      const response = await fetch(`${this.getServerUrl()}/api/format`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.settings.API_KEY}`,
-        },
-        body: JSON.stringify({
-          content,
-          formattingInstruction,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      // Delegate formatting to AIService to avoid reliance on remote /api/format endpoint
+      if (!this.aiService) {
+        logger.error("AIService not initialized");
+        new Notice("formatContentV2: AI service is not initialized.", 6000);
+        return "";
       }
 
-      const { content: formattedContent } = await response.json();
-      return formattedContent;
+      const formatted = await this.aiService.formatContent(content, formattingInstruction);
+      return formatted;
     } catch (error) {
-      logger.error("Error formatting content:", error);
-      new Notice("An error occurred while formatting the content.", 6000);
+      logger.error("Error formatting content via AIService:", error);
+      new Notice("formatContentV2: An error occurred while formatting the content.", 6000);
       return "";
     }
   }
@@ -301,7 +292,7 @@ export default class FileOrganizer extends Plugin {
       new Notice("Content formatted successfully", 3000);
     } catch (error) {
       logger.error("Error formatting content:", error);
-      new Notice("An error occurred while formatting the content.", 6000);
+      new Notice("streamFormatInCurrentNote: An error occurred while formatting the content.", 6000);
     }
   }
 

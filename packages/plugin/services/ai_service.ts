@@ -530,6 +530,31 @@ export class AIService {
   }
 
   /**
+   * Use configured language model to format arbitrary content according to a formatting instruction.
+   * This method avoids relying on the external server API and instead uses the local AI model.
+   */
+  async formatContent(content: string, formattingInstruction: string): Promise<string> {
+    try {
+      logger.info("AIService.formatContent called");
+
+      const system = "You are a precise formatter. Follow the formatting instructions exactly and return only the formatted content (no extra commentary).";
+      const prompt = `Formatting instructions:\n${formattingInstruction}\n\nContent:\n${content}`;
+
+      const response = await generateText({
+        model: this.model,
+        system,
+        prompt,
+      });
+
+      logger.info("AI formatting completed, output length:", response.text?.length ?? 0);
+      return response.text || "";
+    } catch (e: any) {
+      logger.error("Error in AIService.formatContent:", e);
+      throw e;
+    }
+  }
+
+  /**
    * 原子化拆分笔记
    * @param options 拆分选项
    * @returns 拆分后的原子化笔记数组
@@ -1056,7 +1081,7 @@ ${moduleDetails}
           // 同时在模块下生成一个知识点标题
           const kpTitle = selection?.knowledgePointTitle || noteTitle;
           prependLines.push(`- 知识点：${kpTitle}`);
-        } else if ((sel as any)?.object?.shouldCreateKnowledgePoint && (sel as any)?.object?.knowledgePointTitle) {
+        } else if (selection?.shouldCreateKnowledgePoint && selection?.knowledgePointTitle) {
           // 即便不新建模块，也可在阶段直挂一个知识点
           prependLines.push(`- 知识点：${selection.knowledgePointTitle}`);
         }
