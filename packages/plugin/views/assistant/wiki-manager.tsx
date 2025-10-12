@@ -589,12 +589,16 @@ summary: "${metadata?.summary || ''}"
                     });
 
                     const lines = roadmapText.split('\n');
-                    // 1-based 行号保护
-                    let idx = Math.max(0, Math.min(lines.length, (insert?.lineNumber ?? lines.length) - 0));
-                    // 若目标行为标题行，则插入到下一行
-                    const isHeader = /^#{1,6}\s+/.test(lines[Math.max(0, Math.min(lines.length - 1, idx - 1))] || '');
-                    if (isHeader) idx = Math.min(lines.length, idx);
+                    // 1-based → 0-based，防越界
+                    let idx = Math.max(0, Math.min(lines.length, (insert?.lineNumber ?? (lines.length + 1)) - 1));
 
+                    // 若需要预创建模块/知识点，则先插入这些行
+                    if (insert?.prependLines && insert.prependLines.length > 0) {
+                      lines.splice(idx, 0, ...insert.prependLines);
+                      idx += insert.prependLines.length;
+                    }
+
+                    // 插入双链
                     lines.splice(idx, 0, noteLink);
                     roadmapText = lines.join('\n');
                     await plugin.app.vault.modify(roadmapFile, roadmapText);

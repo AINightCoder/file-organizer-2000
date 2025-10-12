@@ -129,9 +129,11 @@ export interface GenerateClassificationOptions {
 
 // 添加 Roadmap 相关的类型定义 (Phase 4)
 export interface RoadmapInsertPosition {
-  section: string;           // 插入的章节名称
-  lineNumber: number;        // 插入的行号
+  section: string;           // 插入的章节名称（阶段/模块描述）
+  lineNumber: number;        // 插入的行号（1-based）。如存在 prependLines，则这些行会先于该行插入
   reasoning: string;         // 插入理由
+  // 若需要在插入链接前创建结构，则在此返回需要预插入的行
+  prependLines?: string[];   // 例如：["#### 3.[异步编程]", "- 知识点：事件循环与任务队列"]
 }
 
 export interface GenerateRoadmapOptions {
@@ -907,40 +909,161 @@ ${content.substring(0, 500)}...`;
         throw new Error("Roadmap content, note content, and note title are required");
       }
 
-      // 提取 Roadmap 的章节结构
-      const sections = this.extractRoadmapSections(roadmapContent);
-      const sectionsInfo = sections.map(s => `第 ${s.lineNumber} 行: ${s.title}`).join("\n");
+      // 解析 Roadmap 结构（阶段/模块/要点）
+      const structure = this.parseRoadmapStructure(roadmapContent);
 
-      const prompt = `分析笔记内容，确定在学习路线图中最合适的插入位置。
+      // 如果没有解析出结构，创建默认阶段/模块/知识点并在末尾插入
+      if (!structure || structure.stages.length === 0) {
+        const lastLine = roadmapContent.split("\n").length + 1;
+        const defaultStage = "## 🗂 未归类/待整理";
+        const defaultModule = `#### 1.[${noteTitle}]`;
+        const defaultKP = `- 知识点：${noteTitle}`;
+        return {
+          section: "未归类/待整理 / 新建模块",
+          lineNumber: lastLine,
+          reasoning: "未检测到阶段结构，按参考流程新建阶段‘未归类/待整理’与模块并插入知识点与双链。",
+          prependLines: [defaultStage, defaultModule, defaultKP],
+        };
+      }
 
-**笔记标题**: ${noteTitle}
-**笔记内容摘要**: ${noteContent.substring(0, 500)}...
+      // 为 LLM 构造轻量级结构摘要，避免传入整份 Roadmap，降低token占用
+      const stageSummaries = structure.stages.map((s, si) => {
+        const modules = s.modules.map((m, mi) => `  - [M${si + 1}.${mi + 1}] ${m.title}`).join("\n");
+        return `• [S${si + 1}] ${s.title}\n${modules}`;
+      }).join("\n");
 
-**学习路线图结构**:
-${sectionsInfo}
-
-**任务要求**:
-1. 根据笔记内容的难度和主题，确定应该插入到哪个章节
-2. 选择合适的行号插入（通常在该章节的核心知识点列表中）
-3. 说明选择该位置的理由
-
-**学习路线图内容**:
-${roadmapContent}`;
-
-      const response = await generateObject({
-        model: this.model,
-        schema: roadmapInsertPositionSchema,
-        system: "You are an expert at analyzing content and determining appropriate placement in learning roadmaps. Consider the difficulty level, topic relevance, and logical flow of the roadmap.",
-        prompt: prompt,
+      // 让模型选择阶段/模块，并在需要时建议新模块/知识点标题（不生成行号）
+      const selectionSchema = z.object({
+        stageId: z.string().describe("阶段ID，如 S1、S2…"),
+        moduleId: z.string().optional().describe("模块ID，如 M1.1；若不属于任何模块可省略"),
+        // 当没有合适模块时创建新模块
+        shouldCreateModule: z.boolean().optional(),
+        moduleTitle: z.string().optional().describe("新模块标题（当 shouldCreateModule 为 true 时需要）"),
+        // 当模块存在但缺少合适知识点时创建新知识点
+        shouldCreateKnowledgePoint: z.boolean().optional(),
+        knowledgePointTitle: z.string().optional().describe("新知识点标题（当 shouldCreateKnowledgePoint 为 true 时需要）"),
+        reasoning: z.string().describe("为何选择该阶段/模块/是否需要新建的理由"),
       });
 
-      logger.info("Insert position found:", response.object);
+      // 构造模块摘要，附带少量要点，便于判断是否需要新建知识点
+      const moduleDetails = structure.stages.map((s, si) => {
+        const modules = s.modules.map((m, mi) => {
+          const bullets = m.bullets.slice(0, 3).map(b => `      · ${b.text.substring(0, 60)}`).join("\n");
+          return `  - [M${si + 1}.${mi + 1}] ${m.title}${bullets ? `\n${bullets}` : ""}`;
+        }).join("\n");
+        return `• [S${si + 1}] ${s.title}\n${modules}`;
+      }).join("\n");
 
-      return {
-        section: response.object.section,
-        lineNumber: response.object.lineNumber,
-        reasoning: response.object.reasoning,
-      };
+      const selectionPrompt = `基于参考流程（docs/flow/参考流程.md），Roadmap 的插入层次为：阶段(初/中/高) → 模块 → 知识点。
+不得修改已有双链；若没有合适模块/知识点，需要在合适位置“新建模块”和/或“新建知识点”。
+
+请根据笔记信息，从下列阶段/模块中选择最合适的位置，并判断是否需要新建模块/知识点（只做选择与是否新建判断，不输出行号）：
+
+【笔记信息】
+- 标题: ${noteTitle}
+- 摘要: ${noteContent.substring(0, 600)}...
+
+【结构概览】
+${moduleDetails}
+
+输出 JSON 字段：
+- stageId: 必填，如 "S1"
+- moduleId: 可选，如 "M1.2"；若无合适模块则留空并置 shouldCreateModule=true
+- shouldCreateModule: 可选，布尔
+- moduleTitle: 可选，新模块标题（当 shouldCreateModule 为 true）
+- shouldCreateKnowledgePoint: 可选，布尔
+- knowledgePointTitle: 可选，新知识点标题（当 shouldCreateKnowledgePoint 为 true）
+- reasoning: 必填。`;
+
+      let chosenStageIdx = 0;
+      let chosenModuleIdx: number | null = null;
+      let reasoning = "";
+      let selection: any = null;
+      try {
+        const sel = await generateObject({
+          model: this.model,
+          schema: selectionSchema,
+          system: "You classify notes by difficulty/topic and choose the best stage/module in a roadmap. Follow the provided structure strictly.",
+          prompt: selectionPrompt,
+        });
+        selection = sel.object;
+        reasoning = selection.reasoning || "";
+
+        // 解析 Sx / Mx.y 到索引
+        const stageMatch = selection.stageId?.match(/^S(\d+)$/i);
+        if (stageMatch) {
+          const sIdx = Number(stageMatch[1]) - 1;
+          if (sIdx >= 0 && sIdx < structure.stages.length) chosenStageIdx = sIdx;
+        }
+        if (selection.moduleId) {
+          const modMatch = selection.moduleId.match(/^M(\d+)\.(\d+)$/i);
+          if (modMatch) {
+            const ms = Number(modMatch[1]) - 1;
+            const mm = Number(modMatch[2]) - 1;
+            if (ms === chosenStageIdx) {
+              if (mm >= 0 && mm < structure.stages[chosenStageIdx].modules.length) {
+                chosenModuleIdx = mm;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        // 如果模型选择失败，使用启发式：优先“未归类/待整理”，否则选择第一个阶段
+        logger.warn("LLM 阶段/模块选择失败，回退到启发式", err);
+        const idx = structure.stages.findIndex(s => /未归类|待整理/.test(s.title));
+        chosenStageIdx = idx !== -1 ? idx : 0;
+        chosenModuleIdx = null;
+        reasoning = "模型选择失败，采用启发式：未归类/待整理 或 第一个阶段。";
+      }
+
+      // 依据本地解析结果计算具体插入行
+      const chosenStage = structure.stages[chosenStageIdx];
+      let lineNumber: number;
+      let sectionDesc: string;
+
+      const prependLines: string[] = [];
+
+      if (chosenModuleIdx !== null) {
+        const mod = chosenStage.modules[chosenModuleIdx];
+        // 若需要新建知识点，则先插入知识点行
+        const lastBullet = mod.bullets.length > 0 ? mod.bullets[mod.bullets.length - 1].line : null;
+        // 插入在模块内最后一个要点之后；若没有要点，则在模块标题下一行
+        lineNumber = (lastBullet ?? mod.line) + 1;
+        sectionDesc = `${chosenStage.title} / ${mod.title}`;
+
+        // 根据模型建议，决定是否需要在模块内先新增知识点标题
+        // sel.object.shouldCreateKnowledgePoint may be undefined; treat truthy only
+        // 注：知识点用列表表示，采用“知识点：xxx”的统一前缀，便于检索
+        if (selection?.shouldCreateKnowledgePoint && selection?.knowledgePointTitle) {
+          prependLines.push(`- 知识点：${selection.knowledgePointTitle}`);
+        }
+      } else {
+        // 仅定位到阶段：可能需要新建模块和知识点
+        const lastStageBullet = chosenStage.stageBullets.length > 0
+          ? chosenStage.stageBullets[chosenStage.stageBullets.length - 1].line
+          : null;
+        // 计算插入基线：阶段标题下一行或最后阶段要点之后
+        lineNumber = (lastStageBullet ?? chosenStage.line) + 1;
+        sectionDesc = `${chosenStage.title}`;
+
+        // 构造新模块标题
+        const willCreateModule = selection?.shouldCreateModule;
+        const newModuleTitle = selection?.moduleTitle || `${noteTitle}`;
+        if (willCreateModule) {
+          const nextIndex = chosenStage.modules.length + 1;
+          // 习惯格式：#### 3.[模块名称]
+          prependLines.push(`#### ${nextIndex}.[${newModuleTitle}]`);
+          // 同时在模块下生成一个知识点标题
+          const kpTitle = selection?.knowledgePointTitle || noteTitle;
+          prependLines.push(`- 知识点：${kpTitle}`);
+        } else if ((sel as any)?.object?.shouldCreateKnowledgePoint && (sel as any)?.object?.knowledgePointTitle) {
+          // 即便不新建模块，也可在阶段直挂一个知识点
+          prependLines.push(`- 知识点：${selection.knowledgePointTitle}`);
+        }
+      }
+
+      logger.info("Insert position computed", { sectionDesc, lineNumber, reasoning, prependLines });
+      return { section: sectionDesc, lineNumber, reasoning, prependLines };
 
     } catch (e: any) {
       logger.error("Error finding roadmap insert position:", e);
@@ -973,5 +1096,93 @@ ${roadmapContent}`;
     });
 
     return sections;
+  }
+
+  /**
+   * 解析 Roadmap 结构：阶段(初/中/高/未归类) → 模块 → 项目符号要点
+   * 参考 docs/flow/参考流程.md 的输出结构：
+   * - 阶段: 通常为 `###`（也兼容 `##`）标题，如：📚 初级（入门基础）/ 🚀 中级（进阶提升）/ 🎓 高级（专业精通）
+   * - 模块: 通常为 `####` 标题，如：`#### 1.[模块名称]`
+   * - 知识点: 模块下的列表项 `- ...`
+   */
+  private parseRoadmapStructure(content: string): {
+    stages: Array<{
+      title: string;
+      line: number; // 标题行（1-based）
+      level: number;
+      modules: Array<{
+        title: string;
+        line: number; // 标题行（1-based）
+        level: number;
+        bullets: Array<{ text: string; line: number }>;
+      }>;
+      stageBullets: Array<{ text: string; line: number }>; // 阶段直挂要点（无模块时）
+    }>;
+  } {
+    const lines = content.split("\n");
+
+    const isStageTitle = (txt: string) => {
+      const plain = txt.replace(/[\s📚🚀🎓🗂️]/g, "");
+      return /(初级|入门|中级|进阶|高级|精通|专业|未归类|待整理)/.test(plain);
+    };
+
+    const cleanModuleTitle = (txt: string) => {
+      // 去掉形如 "1.", "1.", "1."、前缀编号和中括号
+      return txt
+        .replace(/^\s*\d+[\.|、]\s*/u, "")
+        .replace(/^\s*\d+\s*\.?\s*/u, "")
+        .replace(/^\s*\[(.*?)\]\s*$/u, "$1")
+        .trim();
+    };
+
+    const stages: Array<{
+      title: string; line: number; level: number;
+      modules: Array<{ title: string; line: number; level: number; bullets: Array<{ text: string; line: number }> }>;
+      stageBullets: Array<{ text: string; line: number }>
+    }> = [];
+
+    let currentStage: typeof stages[number] | null = null;
+    let currentModule: typeof stages[number]["modules"][number] | null = null;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const lineNum = i + 1;
+
+      const h = line.match(/^(#{2,6})\s+(.+)$/);
+      if (h) {
+        const level = h[1].length;
+        const title = h[2].trim();
+
+        // 阶段标题（通常为 ###，也兼容 ##，并包含阶段关键词）
+        if ((level <= 3 && isStageTitle(title)) || (/^##\s+/.test(h[0]) && isStageTitle(title))) {
+          currentStage = { title, line: lineNum, level, modules: [], stageBullets: [] };
+          stages.push(currentStage);
+          currentModule = null;
+          continue;
+        }
+
+        // 模块标题（通常为 #### 或更深）
+        if (level >= 4 && currentStage) {
+          const modTitle = cleanModuleTitle(title);
+          currentModule = { title: modTitle || title, line: lineNum, level, bullets: [] };
+          currentStage.modules.push(currentModule);
+          continue;
+        }
+
+        // 其他标题重置模块上下文
+        currentModule = null;
+        continue;
+      }
+
+      // 列表要点行
+      const bullet = line.match(/^\s*[-*]\s+(.+)$/);
+      if (bullet && currentStage) {
+        const item = { text: bullet[1].trim(), line: lineNum };
+        if (currentModule) currentModule.bullets.push(item);
+        else currentStage.stageBullets.push(item);
+      }
+    }
+
+    return { stages };
   }
 }

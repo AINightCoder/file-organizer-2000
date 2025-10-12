@@ -1836,7 +1836,7 @@ async function linkToRoadmapStep(
 async function insertBacklinkToRoadmap(
   app: any,
   roadmapFile: TFile,
-  position: { lineNumber: number; section: string },
+  position: { lineNumber: number; section: string; prependLines?: string[] },
   noteFile: TFile
 ): Promise<void> {
   try {
@@ -1857,7 +1857,13 @@ async function insertBacklinkToRoadmap(
     }
 
     // 在指定行号插入（行号从1开始，数组索引从0开始）
-    const insertIndex = Math.max(0, Math.min(position.lineNumber - 1, lines.length));
+    let insertIndex = Math.max(0, Math.min(position.lineNumber - 1, lines.length));
+    // 如需创建模块/知识点，先插入这些行
+    if (position.prependLines && position.prependLines.length > 0) {
+      lines.splice(insertIndex, 0, ...position.prependLines);
+      insertIndex += position.prependLines.length;
+    }
+    // 再插入双链
     lines.splice(insertIndex, 0, backlink);
 
     // 写回文件
