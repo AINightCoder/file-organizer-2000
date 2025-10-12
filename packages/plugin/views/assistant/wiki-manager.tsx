@@ -570,9 +570,49 @@ summary: "${metadata?.summary || ''}"
                   }
                 }
 
-                // 添加链接到Roadmap
-                const linkText = `\n- [[${currentFile.basename}]]`;
-                await plugin.app.vault.append(roadmapFile, linkText);
+                // 添加链接到Roadmap（按参考流程插入到对应模块）
+                try {
+                  const noteTitle = currentFile.basename;
+                  const noteLink = `- [[${noteTitle}]]`;
+                  let roadmapText = await plugin.app.vault.read(roadmapFile);
+
+                  // 如果已存在相同双链则跳过
+                  if (roadmapText.includes(`[[${noteTitle}]]`)) {
+                    addLog('  ℹ️ Roadmap 已存在该链接，跳过插入');
+                  } else if (plugin.aiService && (plugin.aiService as any).findRoadmapInsertPosition) {
+                    // 使用 AI 计算插入位置
+                    const insert = await (plugin.aiService as any).findRoadmapInsertPosition({
+                      roadmapContent: roadmapText,
+                      noteContent: content,
+                      noteTitle,
+                      notePath: currentFile.path,
+                    });
+
+                    const lines = roadmapText.split('\n');
+                    // 1-based 行号保护
+                    let idx = Math.max(0, Math.min(lines.length, (insert?.lineNumber ?? lines.length) - 0));
+                    // 若目标行为标题行，则插入到下一行
+                    const isHeader = /^#{1,6}\s+/.test(lines[Math.max(0, Math.min(lines.length - 1, idx - 1))] || '');
+                    if (isHeader) idx = Math.min(lines.length, idx);
+
+                    lines.splice(idx, 0, noteLink);
+                    roadmapText = lines.join('\n');
+                    await plugin.app.vault.modify(roadmapFile, roadmapText);
+                    addLog(`  ✅ 已在模块内插入 Roadmap 链接（行 ${idx + 1}）`);
+                  } else {
+                    // 回退：插入到“未归类/待整理”节，若不存在则创建
+                    const fallbackHeader = '## 🗂 未归类/待整理';
+                    if (!roadmapText.includes(fallbackHeader)) {
+                      roadmapText = `${roadmapText.trim()}\n\n${fallbackHeader}\n`;
+                    }
+                    roadmapText = `${roadmapText}\n${noteLink}`;
+                    await plugin.app.vault.modify(roadmapFile, roadmapText);
+                    addLog('  ✅ 已插入到“未归类/待整理”模块');
+                  }
+                } catch (insertErr: any) {
+                  addLog(`  ⚠️ Roadmap 插入位置计算失败，采用追加：${insertErr.message}`);
+                  await plugin.app.vault.append(roadmapFile, `\n- [[${currentFile.basename}]]`);
+                }
                 addLog(`  ✅ 已关联到Roadmap`);
               } catch (error: any) {
                 addLog(`  ⚠️ Roadmap关联失败: ${error.message}`);
@@ -758,6 +798,7 @@ summary: "${metadata?.summary || ''}"
     </div>
   );
 };
+
 
 
 
