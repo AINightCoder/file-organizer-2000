@@ -17,6 +17,17 @@ export const CustomizationTab: React.FC<CustomizationTabProps> = ({ plugin }) =>
   const [imageInstructions, setImageInstructions] = useState(plugin.settings.imageInstructions);
   const [customTagInstructions, setCustomTagInstructions] = useState(plugin.settings.customTagInstructions);
 
+  // Knowledge base folder routing (new)
+  const [eagerCreateLevel3Dirs, setEagerCreateLevel3Dirs] = useState((plugin.settings as any).eagerCreateLevel3Dirs ?? false);
+  const [includeExistingLevel3Dirs, setIncludeExistingLevel3Dirs] = useState((plugin.settings as any).includeExistingLevel3Dirs ?? true);
+  const [level3Dirs, setLevel3Dirs] = useState<string[]>((plugin.settings as any).level3Dirs ?? ['01.Roadmap','02.What','03.Why','04.How','05.Tool','06.Resource']);
+  const [fallbackLevel3Dir, setFallbackLevel3Dir] = useState<string>((plugin.settings as any).fallbackLevel3Dir ?? '02.What');
+  const [level3DirHintsText, setLevel3DirHintsText] = useState<string>(() => {
+    const hints = ((plugin.settings as any).level3DirHints ?? {}) as Record<string,string>;
+    const lines = Object.entries(hints).map(([k,v]) => `${k}: ${v}`);
+    return lines.join('\n');
+  });
+
   // force set user embeddings to false
   useEffect(() => {
     plugin.settings.useFolderEmbeddings = false;
@@ -33,6 +44,32 @@ export const CustomizationTab: React.FC<CustomizationTabProps> = ({ plugin }) =>
     setter(value);
     (plugin.settings[settingKey] as string) = value;
     await plugin.saveSettings();
+  };
+
+  const saveLevel3Dirs = async (dirs: string[]) => {
+    const clean = Array.from(new Set(dirs.map(d => (d || '').trim()).filter(Boolean)));
+    setLevel3Dirs(clean);
+    (plugin.settings as any).level3Dirs = clean;
+    // ensure fallback is valid
+    if (!clean.includes(fallbackLevel3Dir) && clean.length > 0) {
+      setFallbackLevel3Dir(clean[0]);
+      (plugin.settings as any).fallbackLevel3Dir = clean[0];
+    }
+    await plugin.saveSettings();
+  };
+
+  const parseHints = (text: string): Record<string,string> => {
+    const obj: Record<string,string> = {};
+    text.split(/\r?\n/).forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      const idx = trimmed.indexOf(':');
+      if (idx === -1) return;
+      const key = trimmed.slice(0, idx).trim();
+      const val = trimmed.slice(idx+1).trim();
+      if (key) obj[key] = val;
+    });
+    return obj;
   };
 
   return (
@@ -142,6 +179,88 @@ export const CustomizationTab: React.FC<CustomizationTabProps> = ({ plugin }) =>
               value={customFolderInstructions}
               onChange={(value) => handleTextChange(value, setCustomFolderInstructions, 'customFolderInstructions')}
             />
+
+            <div className="bg-[--background-secondary] p-4 rounded-lg space-y-4">
+              <div className="font-medium text-[--text-normal]">Level-3 Directory Strategy</div>
+              <ToggleSetting
+                name="Eagerly create all level-3 directories"
+                description="When a level-2 folder is chosen, immediately create all standard level-3 directories (01.Roadmap, 02.What, ...). If disabled, only create the final chosen level-3 directory (recommended)."
+                value={eagerCreateLevel3Dirs}
+                onChange={async (value) => {
+                  setEagerCreateLevel3Dirs(value);
+                  (plugin.settings as any).eagerCreateLevel3Dirs = value;
+                  await plugin.saveSettings();
+                }}
+              />
+              <ToggleSetting
+                name="Include existing custom level-3 directories"
+                description="When doing the second AI selection, include any existing subfolders under the chosen level-2 directory, in addition to the standard set."
+                value={includeExistingLevel3Dirs}
+                onChange={async (value) => {
+                  setIncludeExistingLevel3Dirs(value);
+                  (plugin.settings as any).includeExistingLevel3Dirs = value;
+                  await plugin.saveSettings();
+                }}
+              />
+
+              <div className="setting-item">
+                <div className="setting-item-info">
+                  <div className="setting-item-name">Standard Level-3 Directories</div>
+                  <div className="setting-item-description">One per line. These will be created under the selected level-2 domain (e.g., 1.Area/SEO/&lt;dir&gt;). The Roadmap folder name is controlled by "Roadmap Folder" and will be substituted for 01.Roadmap.</div>
+                </div>
+              </div>
+              <textarea
+                value={level3Dirs.join('\n')}
+                onChange={async (e) => {
+                  const lines = e.target.value.split(/\r?\n/);
+                  await saveLevel3Dirs(lines);
+                }}
+                className="w-full h-28 p-2 border border-[--background-modifier-border] rounded text-sm font-mono"
+                placeholder={"01.Roadmap\n02.What\n03.Why\n04.How\n05.Tool\n06.Resource"}
+              />
+
+              <div className="setting-item">
+                <div className="setting-item-info">
+                  <div className="setting-item-name">Fallback Level-3 Directory</div>
+                  <div className="setting-item-description">Used when the second AI selection returns no result.</div>
+                </div>
+                <div className="setting-item-control">
+                  <select
+                    value={fallbackLevel3Dir}
+                    onChange={async (e) => {
+                      const val = e.target.value;
+                      setFallbackLevel3Dir(val);
+                      (plugin.settings as any).fallbackLevel3Dir = val;
+                      await plugin.saveSettings();
+                    }}
+                    className="dropdown"
+                  >
+                    {level3Dirs.map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-item-info">
+                  <div className="setting-item-name">Level-3 Directory Hints</div>
+                  <div className="setting-item-description">Optional, one "key: value" per line (e.g., "02.What: 核心概念"). These hints help AI choose the right subfolder.</div>
+                </div>
+              </div>
+              <textarea
+                value={level3DirHintsText}
+                onChange={async (e) => {
+                  const text = e.target.value;
+                  setLevel3DirHintsText(text);
+                  const hints = parseHints(text);
+                  (plugin.settings as any).level3DirHints = hints;
+                  await plugin.saveSettings();
+                }}
+                className="w-full h-28 p-2 border border-[--background-modifier-border] rounded text-sm font-mono"
+                placeholder={"01.Roadmap: 路径规划, 知识点地图, 索引归档笔记双链\n02.What: 核心概念"}
+              />
+            </div>
           </div>
         </div>
 
