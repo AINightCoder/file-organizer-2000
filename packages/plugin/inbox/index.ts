@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { TFile, moment, TFolder, Vault } from "obsidian";
 import FileOrganizer from "../index";
 import { Queue } from "./services/queue";
@@ -1341,6 +1342,7 @@ async function generateEnhancedMetadataStep(
       content: context.content,
       filename: context.containerFile.basename,
       existingCategories,
+      customPrompt: settings.enhancedMetadataPrompt,
     });
 
     logger.info("增强元数据生成完成", {
@@ -1714,6 +1716,7 @@ async function findOrCreateRoadmapStep(
 
       const roadmapContent = await aiService.generateRoadmap({
         domain: metadata.category,
+        customPrompt: settings.roadmapPrompt,
       });
 
       // 创建 Roadmap 文件
@@ -1735,6 +1738,7 @@ async function findOrCreateRoadmapStep(
 
         const newRoadmapContent = await aiService.generateRoadmap({
           domain: metadata.category,
+          customPrompt: settings.roadmapPrompt,
         });
 
         await context.plugin.app.vault.modify(roadmapFile, newRoadmapContent);

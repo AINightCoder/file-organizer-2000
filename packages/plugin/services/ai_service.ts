@@ -7,8 +7,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createOllama } from "ollama-ai-provider";
 import { FileOrganizerSettings } from "../settings";
-import { DEFAULT_FOLDER_PROMPT } from "../prompts";
-import { DEFAULT_LENGTH_SPLIT_PROMPT } from "../prompts";
+import { DEFAULT_FOLDER_PROMPT, DEFAULT_LENGTH_SPLIT_PROMPT, DEFAULT_ATOMIC_SPLIT_PROMPT, DEFAULT_ENHANCED_METADATA_PROMPT, DEFAULT_ROADMAP_PROMPT } from "../prompts";
 
 // Types
 export interface TagSuggestion {
@@ -562,37 +561,26 @@ export class AIService {
         throw new Error("Content and filename are required");
       }
 
-      // 构建基础 prompt，并确保无论是否提供自定义 prompt 都包含原始内容
-      // 1) 允许在自定义 prompt 中通过 ${filename}/${content} 占位符注入
-      // 2) 若自定义 prompt 未包含占位符，则在末尾追加标准化上下文块
-      const defaultPrompt = '分析以下笔记内容，按照单一知识点原则拆分成独立的原子化笔记。\n\n要求：\n1. 每个笔记专注一个核心概念或知识点\n2. 保持每个笔记的语义完整性和独立性\n3. 为每个笔记提供清晰的标题和知识点说明\n4. 如果内容本身已经是单一知识点，返回包含原内容的单个笔记\n\n原文件名：${filename}\n\n笔记内容：\n${content}';
+      // Prompt selection order: caller.customPrompt -> settings.atomicSplitPrompt -> DEFAULT_ATOMIC_SPLIT_PROMPT
+      const template = customPrompt?.trim() || this.config.atomicSplitPrompt || DEFAULT_ATOMIC_SPLIT_PROMPT;
 
-      const usingCustom = !!customPrompt?.trim();
-      const basePrompt = usingCustom ? customPrompt!.trim() : defaultPrompt;
+      // Ensure placeholders or append content/filename
+      let prompt = template;
+      const hasFilenamePlaceholder = /\$\{filename\}/.test(template);
+      const hasContentPlaceholder = /\$\{content\}/.test(template);
+      if (!hasFilenamePlaceholder) prompt = `${prompt}\n\n原文件名：${filename}`;
+      if (!hasContentPlaceholder) prompt = `${prompt}\n\n笔记内容：\n${content}`;
 
-      // 先做占位符替换（如果有）
-      let prompt = basePrompt
-        .replace(/\${filename}/g, filename)
-        .replace(/\${content}/g, content);
+      // Replace placeholders if present
+      prompt = prompt.replace(/\$\{filename\}/g, filename).replace(/\$\{content\}/g, content);
 
-      if (usingCustom) {
-        // 自定义指令缺少必要信息时，补充标准化上下文，避免遗漏原文
-        const customHasFilename = /\$\{filename\}/.test(customPrompt!);
-        const customHasContent = /\$\{content\}/.test(customPrompt!);
-
-        // 如果原文未被显式注入，则在结尾补充一段上下文
-        if (!customHasFilename || !customHasContent) {
-          const appendixParts: string[] = [];
-          if (!customHasFilename) {
-            appendixParts.push(`原文件名：${filename}`);
-          }
-          if (!customHasContent) {
-            appendixParts.push(`笔记内容：\n${content}`);
-          }
-          if (appendixParts.length > 0) {
-            prompt = `${prompt}\n\n${appendixParts.join('\n\n')}`;
-          }
-        }
+      // Debug
+      try {
+        const promptSource = customPrompt ? 'caller' : (this.config.atomicSplitPrompt ? 'settings' : 'default');
+        logger.info('Atomic split prompt source:', { promptSource });
+        logger.info('Atomic split prompt (final):', { prompt: prompt.substring(0, 1000) });
+      } catch (logErr) {
+        console.warn('Failed to log atomic split prompt debug info', logErr);
       }
 
       const response = await generateObject({
@@ -716,37 +704,29 @@ export class AIService {
         ? `已有分类参考: ${existingCategories.join(", ")}`
         : "可以创建新的分类";
 
-      // 处理 customPrompt 或 settings 模板：优先使用 customPrompt（但会补全缺失的上下文），否则从 settings 中读取并补全占位符
-      let prompt: string;
-      if (customPrompt) {
-        const cp = customPrompt;
-        const hasFilename = /\$\{filename\}/.test(cp);
-        const hasContent = /\$\{content\}/.test(cp);
-        const hasCategoriesHint = /\$\{categoriesHint\}/.test(cp);
+      // Prompt selection order: caller.customPrompt -> settings.enhancedMetadataPrompt -> DEFAULT_ENHANCED_METADATA_PROMPT
+      const template = customPrompt || this.config.enhancedMetadataPrompt || DEFAULT_ENHANCED_METADATA_PROMPT;
 
-        prompt = cp;
-        const appendixParts: string[] = [];
-        if (!hasCategoriesHint) appendixParts.push(`已有分类参考: ${categoriesHint}`);
-        if (!hasFilename) appendixParts.push(`原文件名: ${filename}`);
-        if (!hasContent) appendixParts.push(`笔记内容:\n${content}`);
-        if (appendixParts.length > 0) {
-          prompt = `${prompt}\n\n${appendixParts.join('\n\n')}`;
-        }
-      } else {
-        const template = this.config.enhancedMetadataPrompt || `分析以下笔记内容，生成结构化的元数据。\n\n要求：\n1. 标题(title): 简洁清晰，概括核心内容\n2. 一级分类(category): 如技术、生活、工作、学习等\n3. 二级分类(subcategory): 更细致的分类，可选\n4. 标签(tags): 3-5个相关标签，便于检索\n5. 摘要(summary): 100字以内的内容概括\n6. 来源(source): 如有明确来源信息请提取，可选\n7. 可信度(credibility): 1-5分评估内容可信度，可选\n\n${categoriesHint}\n\n原文件名: ${filename}\n\n笔记内容:\n${content}`;
+      let prompt = template;
+      const hasCategoriesHint = /\$\{categoriesHint\}/.test(template);
+      const hasFilename = /\$\{filename\}/.test(template);
+      const hasContent = /\$\{content\}/.test(template);
+      if (!hasCategoriesHint) prompt = `${prompt}\n\n已有分类参考: ${categoriesHint}`;
+      if (!hasFilename) prompt = `${prompt}\n\n原文件名: ${filename}`;
+      if (!hasContent) prompt = `${prompt}\n\n笔记内容:\n${content}`;
 
-        let promptTemplate = template;
-        const hasCategoriesHint = /\$\{categoriesHint\}/.test(template);
-        const hasFilename = /\$\{filename\}/.test(template);
-        const hasContent = /\$\{content\}/.test(template);
-        if (!hasCategoriesHint) promptTemplate = `${promptTemplate}\n\n已有分类参考: ${categoriesHint}`;
-        if (!hasFilename) promptTemplate = `${promptTemplate}\n\n原文件名: ${filename}`;
-        if (!hasContent) promptTemplate = `${promptTemplate}\n\n笔记内容:\n${content}`;
+      prompt = prompt
+        .replace(/\$\{categoriesHint\}/g, categoriesHint)
+        .replace(/\$\{filename\}/g, filename)
+        .replace(/\$\{content\}/g, content);
 
-        prompt = promptTemplate
-          .replace(/\$\{categoriesHint\}/g, categoriesHint)
-          .replace(/\$\{filename\}/g, filename)
-          .replace(/\$\{content\}/g, content);
+      // Debug
+      try {
+        const promptSource = customPrompt ? 'caller' : (this.config.enhancedMetadataPrompt ? 'settings' : 'default');
+        logger.info('Enhanced metadata prompt source:', { promptSource });
+        logger.info('Enhanced metadata prompt (final):', { prompt: prompt.substring(0, 1000) });
+      } catch (logErr) {
+        console.warn('Failed to log enhanced metadata prompt debug info', logErr);
       }
 
       const response = await generateObject({
@@ -896,53 +876,24 @@ ${content.substring(0, 500)}...`;
         throw new Error("Domain is required");
       }
 
-      const prompt = customPrompt || `请为【${domain}】领域生成一个完整的学习路线图。
+      // Prompt selection order: caller.customPrompt -> settings.roadmapPrompt -> DEFAULT_ROADMAP_PROMPT
+      const template = customPrompt || this.config.roadmapPrompt || DEFAULT_ROADMAP_PROMPT;
+      // If template contains ${domain}, replace. Otherwise append domain context
+      const finalPrompt = template.includes('${domain}') ? template.replace(/\$\{domain\}/g, domain) : `${template}\n\n领域: ${domain}`;
 
-要求：
-1. 包含领域概览（简介、应用场景、学习目标、总学习周期）
-2. 按难度分为三个阶段：初级（入门基础）、中级（进阶提升）、高级（专业精通）
-3. 每个阶段列出：核心知识点、推荐资源、学习周期
-4. 提供学习建议（学习顺序、实践项目、评估标准、常见误区）
-5. 使用 Markdown 格式，结构清晰
-
-**格式示例**：
-
-## 🎯 领域概览
-- **简介**: 该领域的定义和特点
-- **应用场景**: 主要应用场景和发展趋势
-- **学习目标**: 掌握该领域后能达到的能力水平
-- **总学习周期**: 预估完整学习所需时间
-
-## 📚 初级（入门基础）
-### 核心知识点
-- [ ] 知识点1
-- [ ] 知识点2
-
-### 推荐资源
-- 资源1
-- 资源2
-
-### 学习周期
-预计：X 周
-
-## 📖 中级（进阶提升）
-[按相同格式展开]
-
-## 🎓 高级（专业精通）
-[按相同格式展开]
-
-## 💡 学习建议
-1. **学习顺序**: 建议的学习路径
-2. **实践项目**: 每个阶段建议的实践项目
-3. **评估标准**: 如何判断是否掌握该阶段内容
-4. **常见误区**: 学习过程中需要避免的问题
-
-领域: ${domain}`;
+      // Debug
+      try {
+        const promptSource = customPrompt ? 'caller' : (this.config.roadmapPrompt ? 'settings' : 'default');
+        logger.info('Roadmap prompt source:', { promptSource });
+        logger.info('Roadmap prompt (final):', { prompt: finalPrompt.substring(0, 1000) });
+      } catch (logErr) {
+        console.warn('Failed to log roadmap prompt debug info', logErr);
+      }
 
       const response = await generateText({
         model: this.model,
         system: "You are an expert educator with 20 years of experience. Create comprehensive, structured learning roadmaps that help learners progress systematically from beginner to expert level.",
-        prompt: prompt,
+        prompt: finalPrompt,
       });
 
       logger.info("Roadmap generated successfully");
