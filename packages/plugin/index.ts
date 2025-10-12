@@ -754,10 +754,25 @@ export default class FileOrganizer extends Plugin {
         throw new Error("AIService not initialized");
       }
 
-      const customInstructions = this.settings.customFolderInstructions;
+      // 仅关注候选文件夹的前两级（例如：1.Area/SEO），以缩小候选集合
+      // 并指导模型只返回二级路径
+      const userCustom = this.settings.customFolderInstructions || "";
+      const customInstructions = `${userCustom}\n\n要求更新：\n- 仅从提供的 folders 列表中选择，并且只返回前两级路径（形如：根/二级，例如 1.Area/SEO）。\n- 如果没有合适的候选，也可以建议新建一个二级路径（根/二级），不要包含第三级或更深层级。`;
       const cutoff = this.settings.contentCutoffChars;
       const trimmedContent = content.slice(0, cutoff);
-      const folders = this.getAllUserFolders();
+      const foldersAll = this.getAllUserFolders();
+
+      // 将所有已存在的路径折叠为“根/二级”，并去重
+      const toTop2 = (p: string) => {
+        const parts = p.split('/').filter(Boolean);
+        return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : null;
+      };
+      const top2Set = new Set<string>();
+      for (const p of foldersAll) {
+        const t = toTop2(p);
+        if (t) top2Set.add(t);
+      }
+      const folders = Array.from(top2Set);
 
       const suggestedFolders = await this.aiService.generateFolder({
         content: trimmedContent,

@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import FileOrganizer from '../..';
-import { TFile, Notice } from 'obsidian';
+import { TFile, Notice, TFolder } from 'obsidian';
 import { SectionHeader } from './section-header';
 import { DEFAULT_ROADMAP_PROMPT, DEFAULT_OPTIMIZE_PROMPT } from '../../prompts';
 
@@ -268,34 +268,124 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
           addLog('📝 步骤3: 内容格式优化（已前置，跳过）');
 
           addLog("📝 步骤4: 文件重命名（已前置，跳过）");
-          addLog('📝 步骤5: 智能文件夹分类');
+          addLog('📝 步骤5: 智能文件夹分类（二阶段）');
           let targetFolder = currentFile.parent?.path || '';
+          let domainRootFolder: string | null = null; // 二级目录，如 1.Area/SEO
           try {
+            // 第1阶段：仅选择二级目录（recommendFolders 内部已将候选折叠为前两级）
             const folderSuggestions = await plugin.recommendFolders(content, currentFile.basename);
             if (folderSuggestions && folderSuggestions.length > 0) {
-              // 优先选择已存在的文件夹；若都不存在，选择分数最高的一个并新建
               const normalizePath = (p: string) => (p.startsWith('/') ? p.substring(1) : p);
               const suggestionsNorm = folderSuggestions.map((s: any) => ({ ...s, folder: normalizePath(s.folder) }));
               const exists = (p: string) => !!plugin.app.vault.getAbstractFileByPath(p);
               const existing = suggestionsNorm.filter((s: any) => exists(s.folder));
               const pick = (arr: any[]) => arr.sort((a,b) => (b.score ?? 0) - (a.score ?? 0))[0];
-              const chosen = (existing.length > 0) ? pick(existing) : pick(suggestionsNorm);
-              const suggestedFolder = chosen.folder;
-              addLog(`  选择文件夹: ${suggestedFolder}${existing.length>0 ? '（已存在）' : '（新建）'}`);
-              
-              // 确保文件夹存在
-              const folderPath = suggestedFolder.startsWith('/') ? suggestedFolder.substring(1) : suggestedFolder;
-              if (!plugin.app.vault.getAbstractFileByPath(folderPath)) {
-                await ensureNestedFolders(folderPath);
-                addLog(`  ✅ 创建文件夹: ${folderPath}`);
+              const chosenL2 = (existing.length > 0) ? pick(existing) : pick(suggestionsNorm);
+              domainRootFolder = chosenL2.folder; // 形如 1.Area/SEO
+              addLog(`  选择二级目录: ${domainRootFolder}${existing.length>0 ? '（已存在）' : '（新建）'}`);
+
+              // 确保二级目录存在
+              const l2FolderPath = domainRootFolder.startsWith('/') ? domainRootFolder.substring(1) : domainRootFolder;
+              if (!plugin.app.vault.getAbstractFileByPath(l2FolderPath)) {
+                await ensureNestedFolders(l2FolderPath);
+                addLog(`  ✅ 创建二级目录: ${l2FolderPath}`);
               }
-              
-              // 移动文件
-              const newPath = `${folderPath}/${currentFile.name}`;
-              await plugin.app.fileManager.renameFile(currentFile, newPath);
-              currentFile = plugin.app.vault.getAbstractFileByPath(newPath) as TFile;
-              targetFolder = folderPath;
-              addLog(`  ✅ 已移动到: ${folderPath}`);
+
+              // 第2阶段：在二级目录下准备标准三级目录并二次AI选择
+              const kbRoot = plugin.settings.knowledgeBaseRoot || '1.Area';
+              const isUnderKB = l2FolderPath.startsWith(`${kbRoot}/`);
+              const roadmapName = plugin.settings.roadmapFolder || '01.Roadmap';
+              const configured = (plugin.settings as any).level3Dirs && (plugin.settings as any).level3Dirs.length > 0
+                ? (plugin.settings as any).level3Dirs.map((d: string) => d === '01.Roadmap' ? roadmapName : d)
+                : [roadmapName, '02.What','03.Why','04.How','05.Tool','06.Resource'];
+              const level3Dirs = Array.from(new Set(configured));
+
+              // 计算三级候选路径：标准集 + （可选）已有自定义三级目录
+              const standardCandidates = level3Dirs.map(d => `${l2FolderPath}/${d}`);
+              let level3Candidates = [...standardCandidates];
+              if ((plugin.settings as any).includeExistingLevel3Dirs) {
+                try {
+                  const l2FolderAbs = plugin.app.vault.getAbstractFileByPath(l2FolderPath) as any;
+                  const existing = (l2FolderAbs && l2FolderAbs.children)
+                    ? l2FolderAbs.children.filter((c: any) => c && c.children).map((f: any) => f.path)
+                    : [];
+                  level3Candidates = Array.from(new Set([...level3Candidates, ...existing]));
+                } catch {}
+              }
+
+              let finalFolder = l2FolderPath; // 默认若后续失败则落入二级目录
+
+              if (isUnderKB) {
+                // 是否急切创建：全部标准三级目录 vs 懒创建最终目录
+                if ((plugin.settings as any).eagerCreateLevel3Dirs) {
+                  for (const p of standardCandidates) {
+                    if (!plugin.app.vault.getAbstractFileByPath(p)) {
+                      await ensureNestedFolders(p);
+                      addLog(`  ✅ 创建三级目录: ${p}`);
+                    }
+                  }
+                }
+
+                // 组装三级候选并调用AI进行精细归类（仅从提供列表中选择一个）
+                try {
+                  const thirdLevelCandidates = level3Candidates;
+                  const cutoff = plugin.settings.contentCutoffChars;
+                  const trimmed = content.slice(0, cutoff);
+                  const hints = (plugin.settings as any).level3DirHints || {};
+                  const hintLines = level3Dirs
+                    .map(d => hints[d] ? `${d}: ${hints[d]}` : null)
+                    .filter(Boolean) as string[];
+                  const hintBlock = hintLines.length > 0 ? `\n目录含义：\n- ${hintLines.join('\n- ')}` : '';
+                  const customSubfolderInstruction = `仅从提供的 folders 列表中选择最合适的一个三级目录（候选均为 ${l2FolderPath} 的直接子目录）。不要建议新路径，也不要返回二级目录。确保仅返回 1 个结果。${hintBlock}`;
+                  const l3Suggestions = await plugin.aiService.generateFolder({
+                    content: trimmed,
+                    fileName: currentFile.basename,
+                    folders: thirdLevelCandidates,
+                    customInstructions: customSubfolderInstruction,
+                    count: 1,
+                  });
+                  if (l3Suggestions && l3Suggestions.length > 0) {
+                    const chosenL3 = l3Suggestions.sort((a:any,b:any)=> (b.score??0)-(a.score??0))[0];
+                    // 强制限定到候选集合内
+                    finalFolder = level3Candidates.includes(chosenL3.folder) ? chosenL3.folder : finalFolder;
+                    addLog(`  选择三级目录: ${finalFolder}`);
+                  } else {
+                    // 回退：尝试使用配置的默认三级目录
+                    const fallbackName = (plugin.settings as any).fallbackLevel3Dir || '02.What';
+                    const fallbackPath = level3Candidates.find(p => p.endsWith(`/${fallbackName}`));
+                    if (fallbackPath) {
+                      finalFolder = fallbackPath;
+                      addLog(`  ℹ️ 三级目录推荐为空，回退到: ${finalFolder}`);
+                    } else {
+                      addLog('  ℹ️ 三级目录推荐为空，将落入二级目录');
+                    }
+                  }
+                } catch (e:any) {
+                  addLog(`  ⚠️ 三级目录选择失败：${e.message}，将落入二级目录`);
+                }
+
+                // 懒创建：仅在最终落位目录不存在时创建
+                if (!(plugin.settings as any).eagerCreateLevel3Dirs) {
+                  if (!plugin.app.vault.getAbstractFileByPath(finalFolder)) {
+                    await ensureNestedFolders(finalFolder);
+                    addLog(`  ✅ 创建最终三级目录: ${finalFolder}`);
+                  }
+                }
+
+                // 移动到最终三级目录（或二级目录回退）
+                const newPath = `${finalFolder}/${currentFile.name}`;
+                await plugin.app.fileManager.renameFile(currentFile, newPath);
+                currentFile = plugin.app.vault.getAbstractFileByPath(newPath) as TFile;
+                targetFolder = finalFolder;
+                addLog(`  ✅ 已移动到: ${finalFolder}`);
+              } else {
+                // 若不在知识库根下，直接移动到选定的二级目录
+                const newPath = `${l2FolderPath}/${currentFile.name}`;
+                await plugin.app.fileManager.renameFile(currentFile, newPath);
+                currentFile = plugin.app.vault.getAbstractFileByPath(newPath) as TFile;
+                targetFolder = l2FolderPath;
+                addLog(`  ✅ 已移动到: ${l2FolderPath}`);
+              }
             } else {
               addLog('  ℹ️ 无文件夹推荐');
             }
@@ -394,9 +484,12 @@ summary: "${metadata?.summary || ''}"
           if (!plugin.settings.enableRoadmapLinking) {
             addLog('  ℹ️ Roadmap关联功能未启用（设置关闭）');
           } else {
-            // 先从路径推导 cate 获取领域
+            // 先从路径推导 cate 获取领域（优先使用二级目录作为锚点）
             let domainCate = (() => {
-              const parts = targetFolder.split('/').filter(Boolean);
+              const baseForDomain = (typeof domainRootFolder === 'string' && domainRootFolder.length > 0)
+                ? domainRootFolder
+                : targetFolder;
+              const parts = baseForDomain.split('/').filter(Boolean);
               const kbRoot = plugin.settings.knowledgeBaseRoot || '1.Area';
               const idx = parts.indexOf(kbRoot);
               return idx >= 0 && parts.length > idx + 1 ? parts[idx + 1] : (parts[1] || '');
@@ -421,13 +514,16 @@ summary: "${metadata?.summary || ''}"
 
             if (domainCate) {
               try {
-                // 查找或创建Roadmap
-                const roadmapPath = `${targetFolder}/01.Roadmap/Roadmap.md`;
+                // 查找或创建Roadmap（始终锚定在二级目录）
+                const roadmapBase = (typeof domainRootFolder === 'string' && domainRootFolder.length > 0)
+                  ? domainRootFolder
+                  : targetFolder;
+                const roadmapPath = `${roadmapBase}/01.Roadmap/Roadmap.md`;
                 let roadmapFile = plugin.app.vault.getAbstractFileByPath(roadmapPath) as TFile;
 
                 if (!roadmapFile) {
                   addLog('  创建Roadmap文件...');
-                  await ensureNestedFolders(`${targetFolder}/${plugin.settings.roadmapFolder}`);
+                  await ensureNestedFolders(`${roadmapBase}/${plugin.settings.roadmapFolder}`);
                   // 尝试用 AI 生成完整 Roadmap 内容（使用 settings 中的提示词）
                   try {
                     const domain = domainCate || metadata?.title || '通用领域';
