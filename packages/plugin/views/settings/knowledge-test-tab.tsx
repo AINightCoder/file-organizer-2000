@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import FileOrganizer from '../../index';
+import { DEFAULT_FOLDER_PROMPT } from '../../prompts';
 import { TFile } from 'obsidian';
 
 interface KnowledgeTestTabProps {
@@ -639,12 +640,12 @@ flutter doctor -v
                 步骤7: 智能文件夹分类提示词
                 <span className="ml-2 text-xs text-gray-500">(recommendFolders)</span>
               </label>
-              <textarea
-                value={customPrompts.folder}
-                onChange={(e) => setCustomPrompts({...customPrompts, folder: e.target.value})}
-                className="w-full h-24 p-2 border border-gray-300 rounded text-sm font-mono"
-                placeholder="输入文件夹分类提示词（可选）..."
-              />
+                <textarea
+                  value={customPrompts.folder}
+                  onChange={(e) => setCustomPrompts({...customPrompts, folder: e.target.value})}
+                  className="w-full h-24 p-2 border border-gray-300 rounded text-sm font-mono"
+                  placeholder={plugin.settings.customFolderInstructions ? "输入文件夹分类提示词（可选）..." : DEFAULT_FOLDER_PROMPT.substring(0, 180) + '...'}
+                />
               <div className="mt-1 text-xs text-gray-500">
                 作为 customInstructions 传递给 AI，可为空
               </div>

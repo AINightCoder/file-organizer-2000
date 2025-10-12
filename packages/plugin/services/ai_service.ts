@@ -7,6 +7,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createOllama } from "ollama-ai-provider";
 import { FileOrganizerSettings } from "../settings";
+import { DEFAULT_FOLDER_PROMPT } from "../prompts";
 
 // Types
 export interface TagSuggestion {
@@ -231,7 +232,7 @@ const roadmapInsertPositionSchema = z.object({
 export class AIService {
   private config: FileOrganizerSettings;
   private model: LanguageModel;
-  private models: Record<string, LanguageModel>;
+  private models: Record<string, LanguageModel> = {} as Record<string, LanguageModel>;
   private initialized: boolean = false;
 
   constructor(config: FileOrganizerSettings) {
@@ -486,9 +487,12 @@ export class AIService {
         throw new Error("Content, fileName and folders array are required");
       }
 
-      // 处理 customInstructions（优先使用传入值，否则使用 settings），并在缺少关键上下文时追加
-      const instructionSource = customInstructions || this.config.customFolderInstructions || "";
-      let instruction = instructionSource;
+  // 处理 customInstructions（优先使用传入值，否则使用 settings），并在缺少关键上下文时追加
+  const instructionSource = customInstructions || this.config.customFolderInstructions || "";
+
+  // 如果没有提供自定义提示词，则使用内置的默认提示词（基于 docs/flow/参考流程.md 中的知识库结构与归档工作流）
+  // 当 caller 或 settings 都未提供自定义指令时，使用集中式默认提示词；否则使用传入的指令
+  let instruction = instructionSource && instructionSource.trim() ? instructionSource : DEFAULT_FOLDER_PROMPT;
       const hasFileName = /\$\{fileName\}/.test(instruction);
       const hasContent = /\$\{content\}/.test(instruction);
       const appendixParts: string[] = [];
@@ -499,6 +503,15 @@ export class AIService {
       }
       // 替换占位符（如果存在）
       instruction = instruction.replace(/\$\{fileName\}/g, fileName).replace(/\$\{content\}/g, content);
+
+      // Debug: log which instruction source is used and the final instruction passed to the model
+      try {
+        logger.info("Folder instruction source:", { instructionSource });
+        logger.info("Folder instruction (final):", { instruction });
+      } catch (logErr) {
+        // don't break flow if logging fails
+        console.warn('Failed to log folder instruction debug info', logErr);
+      }
 
       const response = await generateObject({
         model: this.model,
