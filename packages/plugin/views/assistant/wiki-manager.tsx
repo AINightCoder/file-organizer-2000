@@ -392,28 +392,93 @@ summary: "${metadata.summary || ''}"
 
           // 步骤9: Roadmap关联
           addLog('📝 步骤9: Roadmap关联');
-          if (plugin.settings.enableRoadmapIntegration && metadata?.category) {
-            try {
-              // 查找或创建Roadmap
-              const roadmapPath = `${targetFolder}/01.Roadmap/Roadmap.md`;
-              let roadmapFile = plugin.app.vault.getAbstractFileByPath(roadmapPath) as TFile;
-              
-              if (!roadmapFile) {
-                addLog('  创建Roadmap文件...');
-                await ensureNestedFolders(`${targetFolder}/01.Roadmap`);
-                roadmapFile = await plugin.app.vault.create(roadmapPath, `# ${metadata.category} Roadmap\n\n`);
-                addLog(`  ✅ 已创建: ${roadmapPath}`);
-              }
-              
-              // 添加链接到Roadmap
-              const linkText = `\n- [[${currentFile.basename}]]`;
-              await plugin.app.vault.append(roadmapFile, linkText);
-              addLog(`  ✅ 已关联到Roadmap`);
-            } catch (error: any) {
-              addLog(`  ⚠️ Roadmap关联失败: ${error.message}`);
-            }
+
+          // Debug: 明确记录当前设置和 metadata 状态，便于排查为什么未触发关联
+          addLog(`  debug: enableRoadmapLinking=${!!plugin.settings.enableRoadmapLinking}, metadataExists=${!!metadata}, metadata.category=${metadata?.category ?? '<none>'}`);
+
+          // 更明确的判断和回退策略：
+          // 1) 如果设置关闭 => 明确提示
+          // 2) 如果 metadata.category 缺失 => 尝试从文件 YAML 前言回退读取 category
+          if (!plugin.settings.enableRoadmapLinking) {
+            addLog('  ℹ️ Roadmap关联功能未启用（设置关闭）');
           } else {
-            addLog('  ℹ️ Roadmap关联功能未启用');
+            // 确保有 category（优先使用 metadata），若无则尝试从已写入的文件前言读取
+            if (!metadata?.category) {
+              try {
+                const fileText = await plugin.app.vault.read(currentFile);
+                if (fileText.startsWith('---')) {
+                  const endIndex = fileText.indexOf('---', 3);
+                  if (endIndex !== -1) {
+                    const yaml = fileText.substring(3, endIndex);
+                    // 尝试用正则提取 cate 字段（与写入时使用的字段名一致）
+                    const m = yaml.match(/^[ \t]*cate:\s*["']?(.*?)["']?\s*$/m);
+                    if (m && m[1]) {
+                      const fallbackCate = m[1].trim();
+                      if (fallbackCate) {
+                        addLog(`  ℹ️ 从文件前言回退获取到分类: ${fallbackCate}`);
+                        metadata = { ...(metadata || {}), category: fallbackCate };
+                      }
+                    }
+                  }
+                }
+              } catch (err: any) {
+                addLog(`  ⚠️ 回退读取文件前言失败: ${err.message}`);
+              }
+            }
+
+            if (metadata?.category) {
+              try {
+                // 查找或创建Roadmap
+                const roadmapPath = `${targetFolder}/01.Roadmap/Roadmap.md`;
+                let roadmapFile = plugin.app.vault.getAbstractFileByPath(roadmapPath) as TFile;
+
+                if (!roadmapFile) {
+                  addLog('  创建Roadmap文件...');
+                  await ensureNestedFolders(`${targetFolder}/${plugin.settings.roadmapFolder}`);
+                  // 尝试用 AI 生成完整 Roadmap 内容（使用 settings 中的提示词）
+                  try {
+                    const domain = metadata.category || metadata.title || '通用领域';
+                    const roadmapPrompt = plugin.settings.roadmapPrompt;
+                    let roadmapContent: string | null = null;
+
+                    if (plugin.aiService && plugin.aiService.generateRoadmap) {
+                      addLog('  ℹ️ 使用 AI 生成 Roadmap 内容...');
+                      roadmapContent = await plugin.aiService.generateRoadmap({ domain, customPrompt: roadmapPrompt });
+                      if (roadmapContent && typeof roadmapContent === 'string' && roadmapContent.trim().length > 0) {
+                        roadmapFile = await plugin.app.vault.create(roadmapPath, roadmapContent);
+                        addLog(`  ✅ 已使用 AI 生成并创建: ${roadmapPath}`);
+                      }
+                    }
+
+                    // 回退：如果 AI 未生成内容或出错，创建基础标题文件
+                    if (!roadmapFile) {
+                      addLog('  ⚠️ AI 未返回有效 Roadmap，创建基础 Roadmap 文件作为回退');
+                      const header = `# ${metadata.category} Roadmap\n\n`;
+                      roadmapFile = await plugin.app.vault.create(roadmapPath, header);
+                      addLog(`  ✅ 已创建: ${roadmapPath}`);
+                    }
+                  } catch (err: any) {
+                    addLog(`  ⚠️ Roadmap 生成失败，使用基础模板: ${err.message}`);
+                    const header = `# ${metadata.category} Roadmap\n\n`;
+                    try {
+                      roadmapFile = await plugin.app.vault.create(roadmapPath, header);
+                      addLog(`  ✅ 已创建: ${roadmapPath}`);
+                    } catch (e: any) {
+                      addLog(`  ❌ 无法创建 Roadmap 文件: ${e.message}`);
+                    }
+                  }
+                }
+
+                // 添加链接到Roadmap
+                const linkText = `\n- [[${currentFile.basename}]]`;
+                await plugin.app.vault.append(roadmapFile, linkText);
+                addLog(`  ✅ 已关联到Roadmap`);
+              } catch (error: any) {
+                addLog(`  ⚠️ Roadmap关联失败: ${error.message}`);
+              }
+            } else {
+              addLog('  ℹ️ Roadmap未关联：未生成类别信息（metadata.category 为空）。请启用增强元数据，或检查 AI 服务返回值。');
+            }
           }
 
           addLog(`✅ 笔记处理完成: ${currentFile.basename}`);

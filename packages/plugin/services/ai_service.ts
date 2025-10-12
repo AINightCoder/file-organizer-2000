@@ -364,24 +364,23 @@ export class AIService {
 
       this.model = this.getModel(this.config.DEFAULT_MODEL);
       logger.info(`Using model ${this.config.DEFAULT_MODEL} : ${this.model} from ${this.models}`);
+      // Prepare custom instructions: prefer passed customInstructions, then settings, then empty
+      let instructionTemplate = customInstructions || this.config.customTagInstructions || "";
+      // If template lacks content or existingTags context, append them so AI always sees necessary info
+      const hasContentPlaceholder = /\$\{content\}/.test(instructionTemplate);
+      const hasExistingTagsPlaceholder = /\$\{existingTags\}/.test(instructionTemplate);
+      if (!hasExistingTagsPlaceholder && existingTags && existingTags.length > 0) {
+        instructionTemplate = `${instructionTemplate}\n\n已有标签参考: ${existingTags.join(", ")}`;
+      }
+      if (!hasContentPlaceholder) {
+        instructionTemplate = `${instructionTemplate}\n\n内容摘要(前${Math.min(500, content.length)}字符): ${content.substring(0, Math.min(500, content.length))}`;
+      }
+
       const response = await generateObject({
         model: this.model,
         schema: tagsSchema,
-        system: `You are a precise tag generator. Analyze content and suggest ${count} relevant tags.
-                ${existingTags.length ? `Consider existing tags: ${existingTags.join(", ")}` : 'Create new tags if needed.'}
-                ${customInstructions ? `Follow these custom instructions: ${customInstructions}` : ''}
-                
-                Guidelines:
-                - Prefer existing tags when appropriate (score them higher)
-                - Create specific, meaningful new tags when needed
-                - Score based on relevance (0-100)
-                - Include brief reasoning for each tag
-                - Focus on key themes, topics, and document type`,
-        prompt: `File: "${fileName}"
-                
-                Content: """
-                ${content}
-                """`,
+        system: `You are a precise tag generator. Analyze content and suggest ${count} relevant tags. ${instructionTemplate ? `Follow these custom instructions: ${instructionTemplate}` : ''}\n\nGuidelines:\n- Prefer existing tags when appropriate (score them higher)\n- Create specific, meaningful new tags when needed\n- Score based on relevance (0-100)\n- Include brief reasoning for each tag\n- Focus on key themes, topics, and document type`,
+        prompt: `File: "${fileName}"\n\nContent: """\n${content}\n"""`,
       });
 
       logger.info("Raw AI response:", response);
@@ -399,9 +398,9 @@ export class AIService {
       logger.info("Generated tags:", sortedTags);
       return sortedTags;
 
-    } catch (error) {
-      logger.error("Error generating tags:", error);
-      throw error;
+    } catch (e: any) {
+      logger.error("Error generating tags:", e);
+      throw e;
     }
   }
 
@@ -435,12 +434,17 @@ export class AIService {
     //   }
 
       // 2. 生成新的标题建议
+      // Ensure rename instructions include sufficient context; if missing, append content/filename summary
+      let instructions = customInstructions || this.config.renameInstructions || "";
+      const hasContentPlaceholder = /\$\{content\}/.test(instructions);
+      const hasFileNamePlaceholder = /\$\{fileName\}/.test(instructions);
+      if (!hasFileNamePlaceholder) instructions = `${instructions}\n\n原文件名: ${fileName}`;
+      if (!hasContentPlaceholder) instructions = `${instructions}\n\n内容摘要(前${Math.min(500, content.length)}字符): ${content.substring(0, Math.min(500, content.length))}`;
+
       const response = await generateObject({
         model: this.model,
         schema: titleSchema,
-        system: `Given the content and file name: "${fileName}", suggest exactly ${count} clear titles. Avoid special characters. ${
-          customInstructions ? `Instructions: "${customInstructions}"` : ""
-        }`,
+        system: `Given the content and file name: "${fileName}", suggest exactly ${count} clear titles. Avoid special characters. Instructions: "${instructions}"`,
         prompt: `Content: "${content}"`,
       });
 
@@ -458,12 +462,12 @@ export class AIService {
       logger.info("Generated titles:", sortedTitles);
       return sortedTitles;
 
-    } catch (error) {
-      logger.error("Error generating title:", error);
-      if (error instanceof z.ZodError) {
-        throw new Error(`Invalid response format: ${error.message}`);
+    } catch (e: any) {
+      logger.error("Error generating title:", e);
+      if (e instanceof z.ZodError) {
+        throw new Error(`Invalid response format: ${e.message}`);
       }
-      throw new Error(`Failed to generate title: ${error.message}`);
+      throw new Error(`Failed to generate title: ${e?.message || String(e)}`);
     }
   }
 
@@ -482,14 +486,24 @@ export class AIService {
         throw new Error("Content, fileName and folders array are required");
       }
 
+      // 处理 customInstructions（优先使用传入值，否则使用 settings），并在缺少关键上下文时追加
+      const instructionSource = customInstructions || this.config.customFolderInstructions || "";
+      let instruction = instructionSource;
+      const hasFileName = /\$\{fileName\}/.test(instruction);
+      const hasContent = /\$\{content\}/.test(instruction);
+      const appendixParts: string[] = [];
+      if (!hasFileName) appendixParts.push(`原文件名: ${fileName}`);
+      if (!hasContent) appendixParts.push(`内容:\n${content}`);
+      if (appendixParts.length > 0) {
+        instruction = `${instruction}\n\n${appendixParts.join('\n\n')}`;
+      }
+      // 替换占位符（如果存在）
+      instruction = instruction.replace(/\$\{fileName\}/g, fileName).replace(/\$\{content\}/g, content);
+
       const response = await generateObject({
         model: this.model,
         schema: folderSchema,
-        system: `Given the content and file name: "${fileName}", suggest exactly ${count} folders. You can use: ${folders.join(
-          ", "
-        )}. If none are relevant, suggest new folders. ${
-          customInstructions ? `Instructions: "${customInstructions}"` : ""
-        }`,
+        system: `Given the content and file name: "${fileName}", suggest exactly ${count} folders. You can use: ${folders.join(", ")}. If none are relevant, suggest new folders. ${instruction ? `Instructions: "${instruction}"` : ""}`,
         prompt: `Content: "${content}"`,
       });
 
@@ -508,12 +522,12 @@ export class AIService {
       logger.info("Generated folder suggestions:", sortedFolders);
       return sortedFolders;
 
-    } catch (error) {
-      logger.error("Error generating folder suggestions:", error);
-      if (error instanceof z.ZodError) {
-        throw new Error(`Invalid response format: ${error.message}`);
+    } catch (e: any) {
+      logger.error("Error generating folder suggestions:", e);
+      if (e instanceof z.ZodError) {
+        throw new Error(`Invalid response format: ${e.message}`);
       }
-      throw new Error(`Failed to generate folder suggestions: ${error.message}`);
+      throw new Error(`Failed to generate folder suggestions: ${e?.message || String(e)}`);
     }
   }
 
@@ -589,12 +603,12 @@ export class AIService {
       logger.info("Generated atomic notes:", atomicNotes);
       return atomicNotes;
 
-    } catch (error) {
-      logger.error("Error splitting into atomic notes:", error);
-      if (error instanceof z.ZodError) {
-        throw new Error(`Invalid response format: ${error.message}`);
+    } catch (e: any) {
+      logger.error("Error splitting into atomic notes:", e);
+      if (e instanceof z.ZodError) {
+        throw new Error(`Invalid response format: ${e.message}`);
       }
-      throw new Error(`Failed to split into atomic notes: ${error.message}`);
+      throw new Error(`Failed to split into atomic notes: ${e?.message || String(e)}`);
     }
   }
 
@@ -614,21 +628,23 @@ export class AIService {
       }
 
       // 使用 settings 中的提示词模板，如果没有则使用默认
-      const promptTemplate = this.config.lengthSplitPrompt || `将以下内容在保持语义完整的前提下，按段落边界拆分为多个片段，每个片段不超过 \${maxLength} 字符。
+      const template = this.config.lengthSplitPrompt || `将以下内容在保持语义完整的前提下，按段落或章节边界拆分为多个片段，每个片段不超过 ${maxLength} 字符。\n\n要求：\n1. 在段落或章节边界处拆分\n2. 保持每个片段的上下文连贯性\n3. 避免在句子中间截断\n4. 如果某个段落本身超过限制，在合适的句子边界拆分\n\n内容：\n${content}`;
 
-要求：
-1. 在段落或章节边界处拆分
-2. 保持每个片段的上下文连贯性
-3. 避免在句子中间截断
-4. 如果某个段落本身超过限制，在合适的句子边界拆分
+      // 如果模板缺少关键占位符，则在末尾补充对应上下文，保证原文被注入
+      let promptTemplate = template;
+      const hasContentPlaceholder = /\$\{content\}/.test(template);
+      const hasMaxLengthPlaceholder = /\$\{maxLength\}/.test(template);
+      if (!hasMaxLengthPlaceholder) {
+        promptTemplate = `${promptTemplate}\n\n最大长度限制: ${maxLength}`;
+      }
+      if (!hasContentPlaceholder) {
+        promptTemplate = `${promptTemplate}\n\n内容：\n${content}`;
+      }
 
-内容：
-\${content}`;
-
-      // 替换占位符
+      // 替换占位符（如果存在）
       const prompt = promptTemplate
-        .replace(/\${maxLength}/g, maxLength.toString())
-        .replace(/\${content}/g, content);
+        .replace(/\$\{maxLength\}/g, maxLength.toString())
+        .replace(/\$\{content\}/g, content);
 
       const response = await generateObject({
         model: this.model,
@@ -646,12 +662,12 @@ export class AIService {
       logger.info("Generated fragments:", response.object.fragments);
       return response.object.fragments;
 
-    } catch (error) {
-      logger.error("Error splitting by length:", error);
-      if (error instanceof z.ZodError) {
-        throw new Error(`Invalid response format: ${error.message}`);
+    } catch (e: any) {
+      logger.error("Error splitting by length:", e);
+      if (e instanceof z.ZodError) {
+        throw new Error(`Invalid response format: ${e.message}`);
       }
-      throw new Error(`Failed to split by length: ${error.message}`);
+      throw new Error(`Failed to split by length: ${e?.message || String(e)}`);
     }
   }
 
@@ -675,35 +691,37 @@ export class AIService {
         ? `已有分类参考: ${existingCategories.join(", ")}`
         : "可以创建新的分类";
 
-      // 优先使用自定义 prompt，否则使用 settings 中的配置
+      // 处理 customPrompt 或 settings 模板：优先使用 customPrompt（但会补全缺失的上下文），否则从 settings 中读取并补全占位符
       let prompt: string;
       if (customPrompt) {
-        prompt = customPrompt;
+        const cp = customPrompt;
+        const hasFilename = /\$\{filename\}/.test(cp);
+        const hasContent = /\$\{content\}/.test(cp);
+        const hasCategoriesHint = /\$\{categoriesHint\}/.test(cp);
+
+        prompt = cp;
+        const appendixParts: string[] = [];
+        if (!hasCategoriesHint) appendixParts.push(`已有分类参考: ${categoriesHint}`);
+        if (!hasFilename) appendixParts.push(`原文件名: ${filename}`);
+        if (!hasContent) appendixParts.push(`笔记内容:\n${content}`);
+        if (appendixParts.length > 0) {
+          prompt = `${prompt}\n\n${appendixParts.join('\n\n')}`;
+        }
       } else {
-        // 使用 settings 中的提示词模板
-        const promptTemplate = this.config.enhancedMetadataPrompt || `分析以下笔记内容，生成结构化的元数据。
+        const template = this.config.enhancedMetadataPrompt || `分析以下笔记内容，生成结构化的元数据。\n\n要求：\n1. 标题(title): 简洁清晰，概括核心内容\n2. 一级分类(category): 如技术、生活、工作、学习等\n3. 二级分类(subcategory): 更细致的分类，可选\n4. 标签(tags): 3-5个相关标签，便于检索\n5. 摘要(summary): 100字以内的内容概括\n6. 来源(source): 如有明确来源信息请提取，可选\n7. 可信度(credibility): 1-5分评估内容可信度，可选\n\n${categoriesHint}\n\n原文件名: ${filename}\n\n笔记内容:\n${content}`;
 
-要求：
-1. 标题(title): 简洁清晰，概括核心内容
-2. 一级分类(category): 如技术、生活、工作、学习等
-3. 二级分类(subcategory): 更细致的分类，可选
-4. 标签(tags): 3-5个相关标签，便于检索
-5. 摘要(summary): 100字以内的内容概括
-6. 来源(source): 如有明确来源信息请提取，可选
-7. 可信度(credibility): 1-5分评估内容可信度，可选
+        let promptTemplate = template;
+        const hasCategoriesHint = /\$\{categoriesHint\}/.test(template);
+        const hasFilename = /\$\{filename\}/.test(template);
+        const hasContent = /\$\{content\}/.test(template);
+        if (!hasCategoriesHint) promptTemplate = `${promptTemplate}\n\n已有分类参考: ${categoriesHint}`;
+        if (!hasFilename) promptTemplate = `${promptTemplate}\n\n原文件名: ${filename}`;
+        if (!hasContent) promptTemplate = `${promptTemplate}\n\n笔记内容:\n${content}`;
 
-\${categoriesHint}
-
-原文件名: \${filename}
-
-笔记内容:
-\${content}`;
-
-        // 替换占位符
         prompt = promptTemplate
-          .replace(/\${categoriesHint}/g, categoriesHint)
-          .replace(/\${filename}/g, filename)
-          .replace(/\${content}/g, content);
+          .replace(/\$\{categoriesHint\}/g, categoriesHint)
+          .replace(/\$\{filename\}/g, filename)
+          .replace(/\$\{content\}/g, content);
       }
 
       const response = await generateObject({
@@ -731,12 +749,12 @@ export class AIService {
       logger.info("Generated metadata:", metadata);
       return metadata;
 
-    } catch (error) {
-      logger.error("Error generating enhanced metadata:", error);
-      if (error instanceof z.ZodError) {
-        throw new Error(`Invalid response format: ${error.message}`);
+    } catch (e: any) {
+      logger.error("Error generating enhanced metadata:", e);
+      if (e instanceof z.ZodError) {
+        throw new Error(`Invalid response format: ${e.message}`);
       }
-      throw new Error(`Failed to generate enhanced metadata: ${error.message}`);
+      throw new Error(`Failed to generate enhanced metadata: ${e?.message || String(e)}`);
     }
   }
 
@@ -806,12 +824,12 @@ ${content.substring(0, 500)}...`;
       logger.info("Generated classification:", classification);
       return classification;
 
-    } catch (error) {
-      logger.error("Error generating intelligent classification:", error);
-      if (error instanceof z.ZodError) {
-        throw new Error(`Invalid response format: ${error.message}`);
+    } catch (e: any) {
+      logger.error("Error generating intelligent classification:", e);
+      if (e instanceof z.ZodError) {
+        throw new Error(`Invalid response format: ${e.message}`);
       }
-      throw new Error(`Failed to generate intelligent classification: ${error.message}`);
+      throw new Error(`Failed to generate intelligent classification: ${e?.message || String(e)}`);
     }
   }
 
@@ -905,9 +923,9 @@ ${content.substring(0, 500)}...`;
       logger.info("Roadmap generated successfully");
       return response.text;
 
-    } catch (error) {
-      logger.error("Error generating roadmap:", error);
-      throw new Error(`Failed to generate roadmap: ${error.message}`);
+    } catch (e: any) {
+      logger.error("Error generating roadmap:", e);
+      throw new Error(`Failed to generate roadmap: ${e?.message || String(e)}`);
     }
   }
 
@@ -966,12 +984,12 @@ ${roadmapContent}`;
         reasoning: response.object.reasoning,
       };
 
-    } catch (error) {
-      logger.error("Error finding roadmap insert position:", error);
-      if (error instanceof z.ZodError) {
-        throw new Error(`Invalid response format: ${error.message}`);
+    } catch (e: any) {
+      logger.error("Error finding roadmap insert position:", e);
+      if (e instanceof z.ZodError) {
+        throw new Error(`Invalid response format: ${e.message}`);
       }
-      throw new Error(`Failed to find insert position: ${error.message}`);
+      throw new Error(`Failed to find insert position: ${e?.message || String(e)}`);
     }
   }
 

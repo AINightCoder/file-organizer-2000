@@ -67,6 +67,11 @@ flutter doctor -v
     folder: plugin.settings.customFolderInstructions,
     // 步骤8: 标签推荐
     tags: plugin.settings.customTagInstructions
+    ,
+    // 图片分析提示词
+    image: plugin.settings.imageInstructions,
+    // Roadmap 生成提示词
+    roadmap: plugin.settings.roadmapPrompt
   });
 
   const addLog = (message: string) => {
@@ -81,6 +86,8 @@ flutter doctor -v
     plugin.settings.enhancedMetadataPrompt = customPrompts.metadata;
     plugin.settings.customFolderInstructions = customPrompts.folder;
     plugin.settings.customTagInstructions = customPrompts.tags;
+    plugin.settings.imageInstructions = customPrompts.image;
+    plugin.settings.roadmapPrompt = customPrompts.roadmap;
     plugin.saveSettings();
     alert('提示词已保存到设置！');
   };
@@ -94,6 +101,9 @@ flutter doctor -v
       metadata: plugin.settings.enhancedMetadataPrompt,
       folder: plugin.settings.customFolderInstructions,
       tags: plugin.settings.customTagInstructions
+      ,
+      image: plugin.settings.imageInstructions,
+      roadmap: plugin.settings.roadmapPrompt
     });
     alert('已重置为当前设置中的提示词！');
   };
@@ -633,6 +643,40 @@ flutter doctor -v
               />
               <div className="mt-1 text-xs text-gray-500">
                 作为 customInstructions 传递给 AI
+              </div>
+            </div>
+
+            {/* 图片分析提示词 */}
+            <div>
+              <label className="block mb-2 font-semibold text-sm">
+                图片分析提示词
+                <span className="ml-2 text-xs text-gray-500">(extractTextFromImage / image instructions)</span>
+              </label>
+              <textarea
+                value={customPrompts.image}
+                onChange={(e) => setCustomPrompts({...customPrompts, image: e.target.value})}
+                className="w-full h-24 p-2 border border-gray-300 rounded text-sm font-mono"
+                placeholder="输入图片分析提示词..."
+              />
+              <div className="mt-1 text-xs text-gray-500">
+                用于图片 OCR/视觉描述，确保包含要点提取指令
+              </div>
+            </div>
+
+            {/* Roadmap 生成提示词 */}
+            <div>
+              <label className="block mb-2 font-semibold text-sm">
+                Roadmap 生成提示词
+                <span className="ml-2 text-xs text-gray-500">(用于生成领域学习路线图)</span>
+              </label>
+              <textarea
+                value={customPrompts.roadmap}
+                onChange={(e) => setCustomPrompts({...customPrompts, roadmap: e.target.value})}
+                className="w-full h-40 p-2 border border-gray-300 rounded text-sm font-mono"
+                placeholder="输入 Roadmap 生成提示词..."
+              />
+              <div className="mt-1 text-xs text-gray-500">
+                用于生成学习路线图，支持占位符: {'${domain}'}。默认来自 docs/flow/参考流程.md。
               </div>
             </div>
 

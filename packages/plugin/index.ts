@@ -447,6 +447,17 @@ export default class FileOrganizer extends Plugin {
     const cutoff = this.settings.contentCutoffChars;
     const trimmedContent = content.slice(0, cutoff);
     
+    // Allow server to receive a custom classify prompt from settings; ensure required placeholders exist
+    let classifyTemplate = this.settings.classifyPrompt || "";
+    const hasContentPlaceholder = /\$\{content\}/.test(classifyTemplate);
+    const hasTemplateNamesPlaceholder = /\$\{templateNames\}/.test(classifyTemplate);
+    if (!hasTemplateNamesPlaceholder) {
+      classifyTemplate = `${classifyTemplate}\n\n可用模板：${classifications.join(", ")}`;
+    }
+    if (!hasContentPlaceholder) {
+      classifyTemplate = `${classifyTemplate}\n\n笔记内容摘要(前${Math.min(1000, trimmedContent.length)}字符)：${trimmedContent.substring(0, Math.min(1000, trimmedContent.length))}`;
+    }
+
     const response = await fetch(`${serverUrl}/api/classify1`, {
       method: "POST",
       headers: {
@@ -456,6 +467,7 @@ export default class FileOrganizer extends Plugin {
       body: JSON.stringify({
         content: trimmedContent,
         templateNames: classifications,
+        classifyPrompt: classifyTemplate,
       }),
     });
 
@@ -897,9 +909,9 @@ export default class FileOrganizer extends Plugin {
       this.addPluginCommands();
 
       logger.info("FileOrganizer plugin loaded successfully");
-    } catch (error) {
-      logger.error("Error during plugin initialization:", error);
-      new Notice(`Failed to initialize plugin: ${error.message}`);
+    } catch (e: any) {
+      logger.error("Error during plugin initialization:", e);
+      new Notice(`Failed to initialize plugin: ${e?.message || String(e)}`);
     }
   }
 
