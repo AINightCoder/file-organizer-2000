@@ -1096,7 +1096,8 @@ async function lengthSplitStep(
 
         const fragments = await aiService.splitByLength({
           content: context.content,
-          maxLength: settings.maxNoteLength
+          maxLength: settings.maxNoteLength,
+          customPrompt: settings.lengthSplitPrompt
         });
 
         logger.info("按长度拆分完成", {
@@ -1133,7 +1134,8 @@ async function lengthSplitStep(
 
           const fragments = await aiService.splitByLength({
             content: note.content,
-            maxLength: settings.maxNoteLength
+            maxLength: settings.maxNoteLength,
+            customPrompt: settings.lengthSplitPrompt
           });
 
           // 为每个片段生成独立笔记

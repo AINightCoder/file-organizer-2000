@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import FileOrganizer from '../..';
 import { TFile, Notice } from 'obsidian';
 import { SectionHeader } from './section-header';
+import { DEFAULT_ROADMAP_PROMPT } from '../../prompts';
 
 interface WikiManagerProps {
   plugin: FileOrganizer;
@@ -187,7 +188,8 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
             try {
               const fragments = await plugin.aiService.splitByLength({
                 content: note.content,
-                maxLength: plugin.settings.maxNoteLength
+                maxLength: plugin.settings.maxNoteLength,
+                customPrompt: plugin.settings.lengthSplitPrompt
               });
 
               fragments.forEach((fragment: string, index: number) => {
@@ -303,7 +305,8 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
             if (plugin.settings.enableEnhancedMetadata && plugin.aiService.generateEnhancedMetadata) {
               metadata = await plugin.aiService.generateEnhancedMetadata({
                 content,
-                filename: currentFile.basename
+                filename: currentFile.basename,
+                customPrompt: plugin.settings.enhancedMetadataPrompt
               });
               addLog(`  ✅ 元数据生成成功`);
             } else {
@@ -423,25 +426,21 @@ summary: "${metadata?.summary || ''}"
                   // 尝试用 AI 生成完整 Roadmap 内容（使用 settings 中的提示词）
                   try {
                     const domain = domainCate || metadata?.title || '通用领域';
-                    const roadmapPrompt = plugin.settings.roadmapPrompt || '';
-                    let roadmapContent: string | null = null;
+                    const roadmapPrompt = plugin.settings.roadmapPrompt && plugin.settings.roadmapPrompt.trim().length > 0
+                      ? plugin.settings.roadmapPrompt
+                      : DEFAULT_ROADMAP_PROMPT;
 
-                    // Prepare final prompt: replace ${domain} placeholders, and if no placeholder exists,
-                    // include the domain explicitly so the AI receives the domain context.
-                    let finalRoadmapPrompt: string | undefined = undefined;
-                    if (roadmapPrompt && roadmapPrompt.includes('${domain}')) {
+                    // Prepare final prompt: if it contains ${domain} replace it, otherwise append domain context
+                    let finalRoadmapPrompt: string;
+                    if (roadmapPrompt.includes('${domain}')) {
                       finalRoadmapPrompt = roadmapPrompt.replace(/\$\{domain\}/g, domain);
                       addLog('  ℹ️ roadmapPrompt 中的占位符 ${domain} 已替换');
-                    } else if (roadmapPrompt && roadmapPrompt.trim().length > 0) {
-                      // No explicit placeholder: append domain context to be safe
-                      finalRoadmapPrompt = `${roadmapPrompt}\n\n领域: ${domain}`;
-                      addLog('  ℹ️ roadmapPrompt 未包含占位符，已附加领域上下文');
                     } else {
-                      // No custom prompt configured: use a concise default prompt including the domain
-                      finalRoadmapPrompt = `请为学习领域 "${domain}" 设计一个清晰、循序渐进的学习路线图。`;
-                      addLog('  ℹ️ 未配置 roadmapPrompt，使用默认提示词');
+                      finalRoadmapPrompt = `${roadmapPrompt}\n\n领域: ${domain}`;
+                      addLog('  ℹ️ roadmapPrompt 未包含占位符，已附加领域上下文或使用默认模板');
                     }
 
+                    let roadmapContent: string | null = null;
                     if (plugin.aiService && plugin.aiService.generateRoadmap) {
                       addLog('  ℹ️ 使用 AI 生成 Roadmap 内容...');
                       roadmapContent = await plugin.aiService.generateRoadmap({ domain, customPrompt: finalRoadmapPrompt });

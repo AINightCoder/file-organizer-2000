@@ -8,6 +8,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createOllama } from "ollama-ai-provider";
 import { FileOrganizerSettings } from "../settings";
 import { DEFAULT_FOLDER_PROMPT } from "../prompts";
+import { DEFAULT_LENGTH_SPLIT_PROMPT } from "../prompts";
 
 // Types
 export interface TagSuggestion {
@@ -78,6 +79,7 @@ export interface SplitIntoAtomicNotesOptions {
 export interface SplitByLengthOptions {
   content: string;
   maxLength?: number;
+  customPrompt?: string;
 }
 
 // 添加增强元数据相关的类型定义 (Phase 2)
@@ -633,7 +635,7 @@ export class AIService {
   async splitByLength(options: SplitByLengthOptions): Promise<string[]> {
     try {
       logger.info("Splitting by length with options:", options);
-      const { content, maxLength = 3000 } = options;
+      const { content, maxLength = 3000, customPrompt } = options;
 
       // 如果内容不超过限制，直接返回
       if (content.length <= maxLength) {
@@ -641,7 +643,8 @@ export class AIService {
       }
 
       // 使用 settings 中的提示词模板，如果没有则使用默认
-      const template = this.config.lengthSplitPrompt || `将以下内容在保持语义完整的前提下，按段落或章节边界拆分为多个片段，每个片段不超过 ${maxLength} 字符。\n\n要求：\n1. 在段落或章节边界处拆分\n2. 保持每个片段的上下文连贯性\n3. 避免在句子中间截断\n4. 如果某个段落本身超过限制，在合适的句子边界拆分\n\n内容：\n${content}`;
+      // Prompt selection order: caller.customPrompt -> settings.lengthSplitPrompt -> DEFAULT_LENGTH_SPLIT_PROMPT
+      let template = customPrompt || this.config.lengthSplitPrompt || DEFAULT_LENGTH_SPLIT_PROMPT;
 
       // 如果模板缺少关键占位符，则在末尾补充对应上下文，保证原文被注入
       let promptTemplate = template;
@@ -658,6 +661,15 @@ export class AIService {
       const prompt = promptTemplate
         .replace(/\$\{maxLength\}/g, maxLength.toString())
         .replace(/\$\{content\}/g, content);
+
+      // Debug: log which prompt source is used and the final prompt passed to the model
+      try {
+        const promptSource = customPrompt ? 'caller' : (this.config.lengthSplitPrompt ? 'settings' : 'default');
+        logger.info('Length split prompt source:', { promptSource });
+        logger.info('Length split prompt (final):', { prompt: prompt.substring(0, 1000) });
+      } catch (logErr) {
+        console.warn('Failed to log length split prompt debug info', logErr);
+      }
 
       const response = await generateObject({
         model: this.model,
