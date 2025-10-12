@@ -50,12 +50,22 @@ flutter doctor -v
   const [testResults, setTestResults] = useState<any>(null);
   const [fullFlowResults, setFullFlowResults] = useState<any>(null);
 
-  // 自定义提示词状态
+  // 自定义提示词状态（按处理流程顺序）
   const [showCustomPrompts, setShowCustomPrompts] = useState(false);
   const [customPrompts, setCustomPrompts] = useState({
+    // 步骤1: 原子化拆分
     atomicSplit: plugin.settings.atomicSplitPrompt,
+    // 步骤2: 按长度拆分
+    lengthSplit: plugin.settings.lengthSplitPrompt,
+    // 步骤3: 内容分类（后端使用）
+    classify: plugin.settings.classifyPrompt,
+    // 步骤4: 文件重命名
     rename: plugin.settings.renameInstructions,
+    // 步骤5: 增强元数据
+    metadata: plugin.settings.enhancedMetadataPrompt,
+    // 步骤7: 文件夹分类
     folder: plugin.settings.customFolderInstructions,
+    // 步骤8: 标签推荐
     tags: plugin.settings.customTagInstructions
   });
 
@@ -65,7 +75,10 @@ flutter doctor -v
 
   const handleSavePrompts = () => {
     plugin.settings.atomicSplitPrompt = customPrompts.atomicSplit;
+    plugin.settings.lengthSplitPrompt = customPrompts.lengthSplit;
+    plugin.settings.classifyPrompt = customPrompts.classify;
     plugin.settings.renameInstructions = customPrompts.rename;
+    plugin.settings.enhancedMetadataPrompt = customPrompts.metadata;
     plugin.settings.customFolderInstructions = customPrompts.folder;
     plugin.settings.customTagInstructions = customPrompts.tags;
     plugin.saveSettings();
@@ -75,7 +88,10 @@ flutter doctor -v
   const handleResetPrompts = () => {
     setCustomPrompts({
       atomicSplit: plugin.settings.atomicSplitPrompt,
+      lengthSplit: plugin.settings.lengthSplitPrompt,
+      classify: plugin.settings.classifyPrompt,
       rename: plugin.settings.renameInstructions,
+      metadata: plugin.settings.enhancedMetadataPrompt,
       folder: plugin.settings.customFolderInstructions,
       tags: plugin.settings.customTagInstructions
     });
@@ -125,7 +141,7 @@ flutter doctor -v
         const atomicNotes = await plugin.aiService.splitIntoAtomicNotes({
           content: testContent,
           filename: testFileName,
-          customPrompt: showCustomPrompts ? customPrompts.atomicSplit : plugin.settings.atomicSplitPrompt
+          customPrompt: showCustomPrompts ? customPrompts.atomicSplit : undefined  // 不传 customPrompt，让 AIService 使用 settings
         });
 
         addLog(`✅ 原子化拆分成功，共生成 ${atomicNotes.length} 个笔记`);
@@ -258,7 +274,7 @@ flutter doctor -v
         atomicNotes = await plugin.aiService.splitIntoAtomicNotes({
           content: extractedContent,
           filename: testFileName,
-          customPrompt: showCustomPrompts ? customPrompts.atomicSplit : plugin.settings.atomicSplitPrompt
+          customPrompt: showCustomPrompts ? customPrompts.atomicSplit : undefined  // 不传，使用 settings
         });
         addLog(`✅ 原子化拆分成功，共生成 ${atomicNotes.length} 个笔记`);
         flowResults.steps.push({ 
@@ -501,11 +517,11 @@ flutter doctor -v
               </p>
             </div>
 
-            {/* 原子化拆分提示词 */}
+            {/* 步骤1: 原子化拆分提示词 */}
             <div>
               <label className="block mb-2 font-semibold text-sm">
-                1. 原子化拆分提示词
-                <span className="ml-2 text-xs text-gray-500">(用于笔记拆分)</span>
+                步骤1: 原子化拆分提示词
+                <span className="ml-2 text-xs text-gray-500">(splitIntoAtomicNotes)</span>
               </label>
               <textarea
                 value={customPrompts.atomicSplit}
@@ -513,13 +529,50 @@ flutter doctor -v
                 className="w-full h-32 p-2 border border-gray-300 rounded text-sm font-mono"
                 placeholder="输入原子化拆分提示词..."
               />
+              <div className="mt-1 text-xs text-gray-500">
+                支持占位符: $&#123;filename&#125;, $&#123;content&#125;
+              </div>
             </div>
 
-            {/* 重命名提示词 */}
+            {/* 步骤2: 按长度拆分提示词 */}
             <div>
               <label className="block mb-2 font-semibold text-sm">
-                2. 重命名提示词
-                <span className="ml-2 text-xs text-gray-500">(用于笔记重命名)</span>
+                步骤2: 按长度拆分提示词
+                <span className="ml-2 text-xs text-gray-500">(splitByLength)</span>
+              </label>
+              <textarea
+                value={customPrompts.lengthSplit}
+                onChange={(e) => setCustomPrompts({...customPrompts, lengthSplit: e.target.value})}
+                className="w-full h-32 p-2 border border-gray-300 rounded text-sm font-mono"
+                placeholder="输入按长度拆分提示词..."
+              />
+              <div className="mt-1 text-xs text-gray-500">
+                支持占位符: $&#123;maxLength&#125;, $&#123;content&#125;
+              </div>
+            </div>
+
+            {/* 步骤3: 内容分类提示词 */}
+            <div>
+              <label className="block mb-2 font-semibold text-sm">
+                步骤3: 内容分类提示词
+                <span className="ml-2 text-xs text-gray-500">(classifyContentV2 - 后端使用)</span>
+              </label>
+              <textarea
+                value={customPrompts.classify}
+                onChange={(e) => setCustomPrompts({...customPrompts, classify: e.target.value})}
+                className="w-full h-24 p-2 border border-gray-300 rounded text-sm font-mono"
+                placeholder="输入内容分类提示词..."
+              />
+              <div className="mt-1 text-xs text-gray-500">
+                支持占位符: $&#123;templateNames&#125;, $&#123;content&#125; | 注意：此提示词由后端API使用
+              </div>
+            </div>
+
+            {/* 步骤4: 文件重命名提示词 */}
+            <div>
+              <label className="block mb-2 font-semibold text-sm">
+                步骤4: 文件重命名提示词
+                <span className="ml-2 text-xs text-gray-500">(recommendName)</span>
               </label>
               <textarea
                 value={customPrompts.rename}
@@ -527,13 +580,33 @@ flutter doctor -v
                 className="w-full h-24 p-2 border border-gray-300 rounded text-sm font-mono"
                 placeholder="输入重命名提示词..."
               />
+              <div className="mt-1 text-xs text-gray-500">
+                作为 customInstructions 传递给 AI
+              </div>
             </div>
 
-            {/* 文件夹分类提示词 */}
+            {/* 步骤5: 增强元数据提示词 */}
             <div>
               <label className="block mb-2 font-semibold text-sm">
-                3. 文件夹分类提示词
-                <span className="ml-2 text-xs text-gray-500">(用于笔记分类)</span>
+                步骤5: 增强元数据生成提示词
+                <span className="ml-2 text-xs text-gray-500">(generateEnhancedMetadata)</span>
+              </label>
+              <textarea
+                value={customPrompts.metadata}
+                onChange={(e) => setCustomPrompts({...customPrompts, metadata: e.target.value})}
+                className="w-full h-32 p-2 border border-gray-300 rounded text-sm font-mono"
+                placeholder="输入元数据生成提示词..."
+              />
+              <div className="mt-1 text-xs text-gray-500">
+                支持占位符: $&#123;categoriesHint&#125;, $&#123;filename&#125;, $&#123;content&#125;
+              </div>
+            </div>
+
+            {/* 步骤7: 文件夹分类提示词 */}
+            <div>
+              <label className="block mb-2 font-semibold text-sm">
+                步骤7: 智能文件夹分类提示词
+                <span className="ml-2 text-xs text-gray-500">(recommendFolders)</span>
               </label>
               <textarea
                 value={customPrompts.folder}
@@ -541,13 +614,16 @@ flutter doctor -v
                 className="w-full h-24 p-2 border border-gray-300 rounded text-sm font-mono"
                 placeholder="输入文件夹分类提示词（可选）..."
               />
+              <div className="mt-1 text-xs text-gray-500">
+                作为 customInstructions 传递给 AI，可为空
+              </div>
             </div>
 
-            {/* 标签生成提示词 */}
+            {/* 步骤8: 标签推荐提示词 */}
             <div>
               <label className="block mb-2 font-semibold text-sm">
-                4. 标签生成提示词
-                <span className="ml-2 text-xs text-gray-500">(用于标签推荐)</span>
+                步骤8: 标签推荐提示词
+                <span className="ml-2 text-xs text-gray-500">(recommendTags)</span>
               </label>
               <textarea
                 value={customPrompts.tags}
@@ -555,6 +631,9 @@ flutter doctor -v
                 className="w-full h-24 p-2 border border-gray-300 rounded text-sm font-mono"
                 placeholder="输入标签生成提示词..."
               />
+              <div className="mt-1 text-xs text-gray-500">
+                作为 customInstructions 传递给 AI
+              </div>
             </div>
 
             {/* 操作按钮 */}

@@ -613,7 +613,8 @@ export class AIService {
         return [content];
       }
 
-      const prompt = `将以下内容在保持语义完整的前提下，按段落边界拆分为多个片段，每个片段不超过 ${maxLength} 字符。
+      // 使用 settings 中的提示词模板，如果没有则使用默认
+      const promptTemplate = this.config.lengthSplitPrompt || `将以下内容在保持语义完整的前提下，按段落边界拆分为多个片段，每个片段不超过 \${maxLength} 字符。
 
 要求：
 1. 在段落或章节边界处拆分
@@ -622,7 +623,12 @@ export class AIService {
 4. 如果某个段落本身超过限制，在合适的句子边界拆分
 
 内容：
-${content}`;
+\${content}`;
+
+      // 替换占位符
+      const prompt = promptTemplate
+        .replace(/\${maxLength}/g, maxLength.toString())
+        .replace(/\${content}/g, content);
 
       const response = await generateObject({
         model: this.model,
@@ -669,7 +675,13 @@ ${content}`;
         ? `已有分类参考: ${existingCategories.join(", ")}`
         : "可以创建新的分类";
 
-      const prompt = customPrompt || `分析以下笔记内容，生成结构化的元数据。
+      // 优先使用自定义 prompt，否则使用 settings 中的配置
+      let prompt: string;
+      if (customPrompt) {
+        prompt = customPrompt;
+      } else {
+        // 使用 settings 中的提示词模板
+        const promptTemplate = this.config.enhancedMetadataPrompt || `分析以下笔记内容，生成结构化的元数据。
 
 要求：
 1. 标题(title): 简洁清晰，概括核心内容
@@ -680,12 +692,19 @@ ${content}`;
 6. 来源(source): 如有明确来源信息请提取，可选
 7. 可信度(credibility): 1-5分评估内容可信度，可选
 
-${categoriesHint}
+\${categoriesHint}
 
-原文件名: ${filename}
+原文件名: \${filename}
 
 笔记内容:
-${content}`;
+\${content}`;
+
+        // 替换占位符
+        prompt = promptTemplate
+          .replace(/\${categoriesHint}/g, categoriesHint)
+          .replace(/\${filename}/g, filename)
+          .replace(/\${content}/g, content);
+      }
 
       const response = await generateObject({
         model: this.model,

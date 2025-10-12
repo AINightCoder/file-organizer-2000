@@ -116,8 +116,25 @@ export class FileOrganizerSettings {
   // 拆分策略
   splitStrategy: "atomic" | "length" | "both" = "both";
 
-  // AI 提示词
+  // ===== AI 提示词配置（按处理流程顺序）=====
+  
+  // 步骤1: 原子化拆分提示词
   atomicSplitPrompt = '分析以下笔记内容，按照单一知识点原则拆分成独立的原子化笔记。\n\n要求：\n1. 每个笔记专注一个核心概念或知识点\n2. 保持每个笔记的语义完整性和独立性\n3. 为每个笔记提供清晰的标题和知识点说明\n4. 如果内容本身已经是单一知识点，返回包含原内容的单个笔记\n\n原文件名：${filename}\n\n笔记内容：\n${content}';
+
+  // 步骤2: 按长度拆分提示词
+  lengthSplitPrompt = '将以下内容在保持语义完整的前提下，按段落边界拆分为多个片段，每个片段不超过 ${maxLength} 字符。\n\n要求：\n1. 在段落或章节边界处拆分\n2. 保持每个片段的上下文连贯性\n3. 避免在句子中间截断\n4. 如果某个段落本身超过限制，在合适的句子边界拆分\n\n内容：\n${content}';
+
+  // 步骤3: 内容分类提示词（用于模板分类，后端API使用）
+  classifyPrompt = '根据笔记内容，从给定的模板列表中选择最合适的文档类型。\n\n可用模板：${templateNames}\n\n笔记内容：\n${content}';
+
+  // 步骤4: 文件重命名提示词（已有 renameInstructions）
+
+  // 步骤5: 增强元数据生成提示词
+  enhancedMetadataPrompt = '分析以下笔记内容，生成结构化的元数据。\n\n要求：\n1. 标题(title): 简洁清晰，概括核心内容\n2. 一级分类(category): 如技术、生活、工作、学习等\n3. 二级分类(subcategory): 更细致的分类，可选\n4. 标签(tags): 3-5个相关标签，便于检索\n5. 摘要(summary): 100字以内的内容概括\n6. 来源(source): 如有明确来源信息请提取，可选\n7. 可信度(credibility): 1-5分评估内容可信度，可选\n\n${categoriesHint}\n\n原文件名: ${filename}\n\n笔记内容:\n${content}';
+
+  // 步骤7: 文件夹分类提示词（已有 customFolderInstructions）
+
+  // 步骤8: 标签推荐提示词（已有 customTagInstructions）
 
   // 元数据模板（阶段2）
   enableEnhancedMetadata = false;    // 启用增强元数据
