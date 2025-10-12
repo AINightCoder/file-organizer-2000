@@ -7,7 +7,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createOllama } from "ollama-ai-provider";
 import { FileOrganizerSettings } from "../settings";
-import { DEFAULT_FOLDER_PROMPT, DEFAULT_LENGTH_SPLIT_PROMPT, DEFAULT_ATOMIC_SPLIT_PROMPT, DEFAULT_ENHANCED_METADATA_PROMPT, DEFAULT_ROADMAP_PROMPT } from "../prompts";
+import { DEFAULT_FOLDER_PROMPT, DEFAULT_LENGTH_SPLIT_PROMPT, DEFAULT_ATOMIC_SPLIT_PROMPT, DEFAULT_ENHANCED_METADATA_PROMPT, DEFAULT_ROADMAP_PROMPT, DEFAULT_OPTIMIZE_PROMPT } from "../prompts";
 
 // Types
 export interface TagSuggestion {
@@ -537,13 +537,25 @@ export class AIService {
     try {
       logger.info("AIService.formatContent called");
 
-      const system = "You are a precise formatter. Follow the formatting instructions exactly and return only the formatted content (no extra commentary).";
-      const prompt = `Formatting instructions:\n${formattingInstruction}\n\nContent:\n${content}`;
+      // Prompt selection order: caller.formattingInstruction -> settings.optimizePrompt -> DEFAULT_OPTIMIZE_PROMPT
+      const template = (formattingInstruction && formattingInstruction.trim()) || this.config.optimizePrompt || DEFAULT_OPTIMIZE_PROMPT;
+
+      // Ensure the template contains content placeholder; if not, append content to ensure model always receives the source
+      const hasContentPlaceholder = /\$\{content\}/.test(template);
+      let finalPrompt = template;
+      if (!hasContentPlaceholder) {
+        finalPrompt = `${finalPrompt}\n\n原始内容：\n${content}`;
+      } else {
+        finalPrompt = finalPrompt.replace(/\$\{content\}/g, content);
+      }
+
+      // System instruction focuses the model on producing only the formatted markdown
+      const system = "You are an expert Markdown editor and formatter. Follow the instructions exactly and return only the formatted Markdown content. Preserve YAML frontmatter if present unless instructions say otherwise.";
 
       const response = await generateText({
         model: this.model,
         system,
-        prompt,
+        prompt: finalPrompt,
       });
 
       logger.info("AI formatting completed, output length:", response.text?.length ?? 0);
