@@ -14,6 +14,16 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
   const [fileContent, setFileContent] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingLog, setProcessingLog] = useState<string[]>([]);
+  // 本地控制：是否拆分（实时生效）
+  const [enableSplit, setEnableSplit] = useState<boolean>(plugin.settings.enableAtomicSplit);
+  // 如果 settings 在别处被修改，保持本地状态同步
+  useEffect(() => {
+    try {
+      setEnableSplit(!!plugin.settings.enableAtomicSplit);
+    } catch (e) {
+      // ignore
+    }
+  }, [plugin.settings.enableAtomicSplit]);
 
   // 确保按层级创建多级文件夹（替代过时的 plugin.createFolders）
   const ensureNestedFolders = async (folderPath: string) => {
@@ -149,7 +159,8 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
       let needsSplit = false;
       let atomicNotes: any[] = [];
 
-      if (processingContent.length >= plugin.settings.minNoteLength && plugin.settings.enableAtomicSplit) {
+      // 使用本地状态 enableSplit 以便界面开关能实时控制拆分行为
+      if (processingContent.length >= plugin.settings.minNoteLength && enableSplit) {
         addLog('  正在分析知识点...');
         
         try {
@@ -751,6 +762,27 @@ summary: "${metadata?.summary || ''}"
 
       {/* 操作按钮 */}
       <div className="fo-space-y-2">
+        {/* 实时拆分开关（控制是否启用原子化拆分） */}
+        <div className="fo-flex fo-items-center fo-gap-2 fo-mb-2">
+          <label className="fo-flex fo-items-center fo-gap-2 fo-cursor-pointer">
+            <input
+              type="checkbox"
+              checked={enableSplit}
+              onChange={async (e) => {
+                const v = e.target.checked;
+                setEnableSplit(v);
+                try {
+                  plugin.settings.enableAtomicSplit = v;
+                  if (plugin.saveSettings) await plugin.saveSettings();
+                  addLog(`⚙️ 实时设置: 原子化拆分 ${v ? '已启用' : '已禁用'}`);
+                } catch (err: any) {
+                  addLog(`⚠️ 保存设置失败: ${err.message}`);
+                }
+              }}
+            />
+            <span className="fo-text-sm fo-text-[--text-normal]">启用笔记拆分（实时）</span>
+          </label>
+        </div>
         <button
           onClick={handleProcessNote}
           disabled={!activeFile || isProcessing || !plugin.settings.enableKnowledgeManagement}
