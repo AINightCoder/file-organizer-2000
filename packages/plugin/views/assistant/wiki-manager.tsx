@@ -65,11 +65,6 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
       return;
     }
 
-    // 确认操作
-    if (!confirm(`确认处理当前笔记？\n\n将按照知识管理流程进行完整处理：\n1. 内容拆分（如需要）\n2. 内容优化和格式化\n3. 文件重命名\n4. 元数据扩展\n5. 智能文件夹分类\n6. 标签推荐\n7. Roadmap关联\n\n原笔记可能被删除（如果需要拆分），此操作不可撤销！`)) {
-      return;
-    }
-
     setIsProcessing(true);
     setProcessingLog([]);
 
@@ -292,7 +287,9 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
 
           // 步骤5: 元数据扩展
           addLog('📝 步骤5: 元数据扩展');
-          let metadata: any = null;
+          metadata = null;
+          // 已迁移至步骤6；保留代码但不执行
+          if (false) {
           if (plugin.settings.enableEnhancedMetadata && plugin.aiService.generateEnhancedMetadata) {
             try {
               metadata = await plugin.aiService.generateEnhancedMetadata({
@@ -351,16 +348,25 @@ summary: "${metadata.summary || ''}"
             } catch (error: any) {
               addLog(`  ⚠️ 应用元数据失败: ${error.message}`);
             }
+          } // 结束旧步骤5-6占位
           }
 
-          // 步骤7: 智能文件夹分类
-          addLog('📝 步骤7: 智能文件夹分类');
+          metadata = null;
+          // 步骤5: 智能文件夹分类（优先选择已有 active folders，无合适再新建）
+          addLog('📝 步骤5: 智能文件夹分类');
           let targetFolder = currentFile.parent?.path || '';
           try {
             const folderSuggestions = await plugin.recommendFolders(content, currentFile.basename);
             if (folderSuggestions && folderSuggestions.length > 0) {
-              const suggestedFolder = folderSuggestions[0].folder;
-              addLog(`  推荐文件夹: ${suggestedFolder}`);
+              // 优先选择已存在的文件夹；若都不存在，选择分数最高的一个并新建
+              const normalizePath = (p: string) => (p.startsWith('/') ? p.substring(1) : p);
+              const suggestionsNorm = folderSuggestions.map(s => ({ ...s, folder: normalizePath(s.folder) }));
+              const exists = (p: string) => !!plugin.app.vault.getAbstractFileByPath(p);
+              const existing = suggestionsNorm.filter(s => exists(s.folder));
+              const pick = (arr: any[]) => arr.sort((a,b) => (b.score ?? 0) - (a.score ?? 0))[0];
+              const chosen = (existing.length > 0) ? pick(existing) : pick(suggestionsNorm);
+              const suggestedFolder = chosen.folder;
+              addLog(`  选择文件夹: ${suggestedFolder}${existing.length>0 ? '（已存在）' : '（新建）'}`);
               
               // 确保文件夹存在
               const folderPath = suggestedFolder.startsWith('/') ? suggestedFolder.substring(1) : suggestedFolder;
@@ -382,41 +388,92 @@ summary: "${metadata.summary || ''}"
             addLog(`  ⚠️ 文件夹分类失败: ${error.message}`);
           }
 
-          // 步骤8: 标签推荐
-          addLog('📝 步骤8: 标签推荐');
-          if (plugin.settings.useSimilarTags) {
-            try {
-              const existingTags = await plugin.getAllVaultTags();
-              const suggestions = await plugin.recommendTags(
+          // 步骤6: 元数据扩展与写入（移动完成后执行）
+          addLog('📝 步骤6: 元数据扩展与写入');
+          metadata = null;
+          try {
+            if (plugin.settings.enableEnhancedMetadata && plugin.aiService.generateEnhancedMetadata) {
+              metadata = await plugin.aiService.generateEnhancedMetadata({
                 content,
-                currentFile.path,
-                existingTags
-              );
-
-              if (suggestions && suggestions.length > 0) {
-                const tagsToAdd = suggestions.map(s => s.tag);
-                addLog(`  推荐标签: ${tagsToAdd.join(', ')}`);
-
-                // 使用插件提供的方法按设置安全添加标签
-                for (const s of suggestions) {
-                  await plugin.appendTag(currentFile, s.tag);
-                }
-                addLog('  ✅ 标签已添加');
-              } else {
-                addLog('  ℹ️ 无标签推荐');
-              }
-            } catch (error: any) {
-              addLog(`  ⚠️ 标签推荐失败: ${error.message}`);
+                filename: currentFile.basename
+              });
+              addLog(`  ✅ 元数据生成成功`);
+            } else {
+              addLog('  ℹ️ 元数据扩展功能未启用，使用基础字段');
+              metadata = {};
             }
-          } else {
-            addLog('  ℹ️ 标签推荐功能未启用');
+
+            // 从最终路径推导 cate/subcate
+            const pathParts = targetFolder.split('/').filter(Boolean);
+            const kbRoot = plugin.settings.knowledgeBaseRoot || '1.Area';
+            const rootIdx = pathParts.indexOf(kbRoot);
+            const cate = rootIdx >= 0 && pathParts.length > rootIdx + 1 ? pathParts[rootIdx + 1] : (pathParts[1] || '');
+            const subcate = rootIdx >= 0 && pathParts.length > rootIdx + 2 ? pathParts[rootIdx + 2] : (pathParts[2] || '');
+            metadata = { ...(metadata || {}), category: cate, subcategory: subcate };
+
+            // 解析已有 frontmatter（若有），沿用 create 并做 version+0.1
+            let existingCreate = '';
+            let nextVersion = '1.0';
+            if (content.startsWith('---')) {
+              const endIndex = content.indexOf('---', 3);
+              if (endIndex !== -1) {
+                const yaml = content.substring(3, endIndex);
+                const mCreate = yaml.match(/^[ \t]*create:\s*(.*)$/m);
+                const mVersion = yaml.match(/^[ \t]*version:\s*"?(\d+(?:\.\d+)?)"?/m);
+                if (mCreate && mCreate[1]) existingCreate = mCreate[1].trim();
+                if (mVersion && mVersion[1]) {
+                  const v = parseFloat(mVersion[1]);
+                  if (!Number.isNaN(v)) nextVersion = (Math.round((v + 0.1) * 10) / 10).toFixed(1);
+                }
+              }
+            }
+
+            const now = new Date();
+            const pad = (n: number) => n.toString().padStart(2, '0');
+            const ts = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`;
+            const id = `${ts}-${(metadata?.title || currentFile.basename)}`;
+            const createDate = existingCreate || now.toISOString().split('T')[0];
+            const updateDate = now.toISOString().split('T')[0];
+
+            const yamlFrontmatter = `---
+id: "${id}"
+title: "${metadata?.title || currentFile.basename}"
+version: "${nextVersion}"
+create: ${createDate}
+update: ${updateDate}
+source: "${metadata?.source || '个人笔记'}"
+credibility: ${metadata?.credibility || 5}
+cate: "${cate}"
+subcate: "${subcate}"
+tags: [${(metadata?.tags || []).map((t: string) => `"${t}"`).join(', ')}]
+summary: "${metadata?.summary || ''}"
+---
+
+`;
+
+            // 覆盖/添加 frontmatter（不再二次读取文件，直接使用内存中的 content）
+            if (content.startsWith('---')) {
+              const endIndex = content.indexOf('---', 3);
+              if (endIndex !== -1) {
+                content = yamlFrontmatter + content.substring(endIndex + 4);
+              } else {
+                content = yamlFrontmatter + content;
+              }
+            } else {
+              content = yamlFrontmatter + content;
+            }
+
+            await plugin.app.vault.modify(currentFile, content);
+            addLog('  ✅ 元数据已应用');
+          } catch (error: any) {
+            addLog(`  ⚠️ 元数据处理失败: ${error.message}`);
           }
 
-          // 步骤9: Roadmap关联
-          addLog('📝 步骤9: Roadmap关联');
+          // 步骤7: Roadmap 关联
+          addLog('📝 步骤7: Roadmap 关联');
 
-          // Debug: 明确记录当前设置和 metadata 状态，便于排查为什么未触发关联
-          addLog(`  debug: enableRoadmapLinking=${!!plugin.settings.enableRoadmapLinking}, metadataExists=${!!metadata}, metadata.category=${metadata?.category ?? '<none>'}`);
+          // Debug: 明确记录当前设置，便于排查
+          addLog(`  debug: enableRoadmapLinking=${!!plugin.settings.enableRoadmapLinking}`);
 
           // 更明确的判断和回退策略：
           // 1) 如果设置关闭 => 明确提示
@@ -424,23 +481,24 @@ summary: "${metadata.summary || ''}"
           if (!plugin.settings.enableRoadmapLinking) {
             addLog('  ℹ️ Roadmap关联功能未启用（设置关闭）');
           } else {
-            // 确保有 category（优先使用 metadata），若无则尝试从已写入的文件前言读取
-            if (!metadata?.category) {
+            // 先从路径推导 cate 获取领域
+            let domainCate = (() => {
+              const parts = targetFolder.split('/').filter(Boolean);
+              const kbRoot = plugin.settings.knowledgeBaseRoot || '1.Area';
+              const idx = parts.indexOf(kbRoot);
+              return idx >= 0 && parts.length > idx + 1 ? parts[idx + 1] : (parts[1] || '');
+            })();
+
+            // 若仍无，则尝试从文件 YAML 前言读取
+            if (!domainCate) {
               try {
                 const fileText = await plugin.app.vault.read(currentFile);
                 if (fileText.startsWith('---')) {
                   const endIndex = fileText.indexOf('---', 3);
                   if (endIndex !== -1) {
                     const yaml = fileText.substring(3, endIndex);
-                    // 尝试用正则提取 cate 字段（与写入时使用的字段名一致）
                     const m = yaml.match(/^[ \t]*cate:\s*["']?(.*?)["']?\s*$/m);
-                    if (m && m[1]) {
-                      const fallbackCate = m[1].trim();
-                      if (fallbackCate) {
-                        addLog(`  ℹ️ 从文件前言回退获取到分类: ${fallbackCate}`);
-                        metadata = { ...(metadata || {}), category: fallbackCate };
-                      }
-                    }
+                    if (m && m[1]) domainCate = (m[1] || '').trim();
                   }
                 }
               } catch (err: any) {
@@ -448,7 +506,7 @@ summary: "${metadata.summary || ''}"
               }
             }
 
-            if (metadata?.category) {
+            if (domainCate) {
               try {
                 // 查找或创建Roadmap
                 const roadmapPath = `${targetFolder}/01.Roadmap/Roadmap.md`;
@@ -459,7 +517,7 @@ summary: "${metadata.summary || ''}"
                   await ensureNestedFolders(`${targetFolder}/${plugin.settings.roadmapFolder}`);
                   // 尝试用 AI 生成完整 Roadmap 内容（使用 settings 中的提示词）
                   try {
-                    const domain = metadata.category || metadata.title || '通用领域';
+                    const domain = domainCate || metadata?.title || '通用领域';
                     const roadmapPrompt = plugin.settings.roadmapPrompt;
                     let roadmapContent: string | null = null;
 
@@ -475,13 +533,13 @@ summary: "${metadata.summary || ''}"
                     // 回退：如果 AI 未生成内容或出错，创建基础标题文件
                     if (!roadmapFile) {
                       addLog('  ⚠️ AI 未返回有效 Roadmap，创建基础 Roadmap 文件作为回退');
-                      const header = `# ${metadata.category} Roadmap\n\n`;
+                      const header = `# ${domainCate} Roadmap\n\n`;
                       roadmapFile = await plugin.app.vault.create(roadmapPath, header);
                       addLog(`  ✅ 已创建: ${roadmapPath}`);
                     }
                   } catch (err: any) {
                     addLog(`  ⚠️ Roadmap 生成失败，使用基础模板: ${err.message}`);
-                    const header = `# ${metadata.category} Roadmap\n\n`;
+                    const header = `# ${domainCate} Roadmap\n\n`;
                     try {
                       roadmapFile = await plugin.app.vault.create(roadmapPath, header);
                       addLog(`  ✅ 已创建: ${roadmapPath}`);
@@ -499,7 +557,7 @@ summary: "${metadata.summary || ''}"
                 addLog(`  ⚠️ Roadmap关联失败: ${error.message}`);
               }
             } else {
-              addLog('  ℹ️ Roadmap未关联：未生成类别信息（metadata.category 为空）。请启用增强元数据，或检查 AI 服务返回值。');
+              addLog('  ℹ️ Roadmap未关联：无法确定 cate（领域分类）。');
             }
           }
 
@@ -679,3 +737,4 @@ summary: "${metadata.summary || ''}"
     </div>
   );
 };
+
