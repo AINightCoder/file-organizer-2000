@@ -223,7 +223,29 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
                   // 2) 根据分类获取格式化指令
                   const instructions = await plugin.getTemplateInstructions(documentType);
                   if (!instructions || !instructions.trim()) {
-                    addLog('  ℹ️ 未获取到格式化指令，跳过格式化');
+                    addLog('  ℹ️ 未获取到格式化指令，尝试使用 settings.optimizePrompt 作为回退');
+                    // 如果没有模板指令，使用 settings 中的 optimizePrompt 作为回退进行格式化
+                    const fallbackInstructions = plugin.settings.optimizePrompt;
+                    if (fallbackInstructions && fallbackInstructions.trim()) {
+                      try {
+                        const formattedContent = await plugin.formatContentV2(
+                          content,
+                          fallbackInstructions
+                        );
+
+                        if (formattedContent && formattedContent !== content) {
+                          await plugin.app.vault.modify(currentFile, formattedContent);
+                          content = formattedContent;
+                          addLog(`  ✅ 内容格式化完成（使用回退提示词）`);
+                        } else {
+                          addLog('  ℹ️ 回退提示词未做出修改，跳过格式化');
+                        }
+                      } catch (err: any) {
+                        addLog(`  ⚠️ 使用回退提示词格式化失败: ${err.message}`);
+                      }
+                    } else {
+                      addLog('  ℹ️ 未配置回退格式化提示词（optimizePrompt），跳过格式化');
+                    }
                   } else {
                     // 3) 执行格式化
                     const formattedContent = await plugin.formatContentV2(

@@ -63,6 +63,8 @@ flutter doctor -v
     rename: plugin.settings.renameInstructions,
     // 步骤5: 增强元数据
     metadata: plugin.settings.enhancedMetadataPrompt,
+  // 步骤3/7: 内容优化和格式化提示词（optimize/format）
+  optimize: plugin.settings.optimizePrompt,
     // 步骤7: 文件夹分类
     folder: plugin.settings.customFolderInstructions,
     // 步骤8: 标签推荐
@@ -84,6 +86,7 @@ flutter doctor -v
     plugin.settings.classifyPrompt = customPrompts.classify;
     plugin.settings.renameInstructions = customPrompts.rename;
     plugin.settings.enhancedMetadataPrompt = customPrompts.metadata;
+  plugin.settings.optimizePrompt = customPrompts.optimize;
     plugin.settings.customFolderInstructions = customPrompts.folder;
     plugin.settings.customTagInstructions = customPrompts.tags;
     plugin.settings.imageInstructions = customPrompts.image;
@@ -99,6 +102,7 @@ flutter doctor -v
       classify: plugin.settings.classifyPrompt,
       rename: plugin.settings.renameInstructions,
       metadata: plugin.settings.enhancedMetadataPrompt,
+      optimize: plugin.settings.optimizePrompt,
       folder: plugin.settings.customFolderInstructions,
       tags: plugin.settings.customTagInstructions
       ,
@@ -609,6 +613,23 @@ flutter doctor -v
               />
               <div className="mt-1 text-xs text-gray-500">
                 支持占位符: $&#123;categoriesHint&#125;, $&#123;filename&#125;, $&#123;content&#125;
+              </div>
+            </div>
+
+            {/* 内容优化和格式化提示词（回退/统一优化） */}
+            <div>
+              <label className="block mb-2 font-semibold text-sm">
+                内容优化与格式化提示词
+                <span className="ml-2 text-xs text-gray-500">(optimize/format - 回退用)</span>
+              </label>
+              <textarea
+                value={customPrompts.optimize}
+                onChange={(e) => setCustomPrompts({...customPrompts, optimize: e.target.value})}
+                className="w-full h-28 p-2 border border-gray-300 rounded text-sm font-mono"
+                placeholder="输入内容优化和格式化提示词..."
+              />
+              <div className="mt-1 text-xs text-gray-500">
+                用于在模板指令缺失时作为回退格式化提示词。支持占位符: {'${content}'}。
               </div>
             </div>
 
