@@ -70,6 +70,7 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
 
     try {
       addLog('🚀 开始完整处理流程...');
+      const splitCreatedPaths = new Set<string>();
       addLog(`📋 当前文件: ${activeFile.basename}`);
       addLog(`📏 内容长度: ${fileContent.length} 字符`);
       addLog('');
@@ -79,6 +80,29 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
         addLog('❌ AI服务未初始化');
         new Notice('AI服务未初始化');
         return;
+      }
+      // 预处理：文件重命名（在拆分之前执行）
+      let sourceFile: TFile = activeFile;
+      addLog('📝 预处理: 文件重命名');
+      try {
+        const titleSuggestions = await plugin.recommendName(fileContent, sourceFile.basename);
+        if (titleSuggestions && titleSuggestions.length > 0) {
+          const newName = titleSuggestions[0].title;
+          if (newName && newName !== sourceFile.basename && sourceFile.parent) {
+            addLog(`  建议名称: ${newName}`);
+            const newPath = `${sourceFile.parent.path}/${newName}.md`;
+            await plugin.app.fileManager.renameFile(sourceFile, newPath);
+            const updated = plugin.app.vault.getAbstractFileByPath(newPath) as TFile;
+            if (updated) {
+              sourceFile = updated;
+              addLog(`  ✅ 已重命名为: ${newName}`);
+            }
+          } else {
+            addLog('  ℹ️ 文件名已合适，无需重命名');
+          }
+        }
+      } catch (e: any) {
+        addLog(`  ⚠️ 预处理重命名失败: ${e.message}`);
       }
 
       // ===== 步骤1: 判断是否需要拆分 =====
@@ -92,7 +116,7 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
         try {
           atomicNotes = await plugin.aiService.splitIntoAtomicNotes({
             content: fileContent,
-            filename: activeFile.basename,
+            filename: sourceFile.basename,
             customPrompt: plugin.settings.atomicSplitPrompt
           });
 
@@ -159,7 +183,7 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
         addLog(`  最终拆分为 ${finalNotes.length} 个笔记`);
         
         // 创建拆分笔记
-        const targetFolder = activeFile.parent;
+        const targetFolder = sourceFile.parent;
         for (let i = 0; i < finalNotes.length; i++) {
           const note = finalNotes[i];
           addLog(`  创建笔记 ${i + 1}/${finalNotes.length}: ${note.filename}`);
@@ -168,6 +192,7 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
             const newFilePath = `${targetFolder.path}/${note.filename}.md`;
             const newFile = await plugin.app.vault.create(newFilePath, note.content);
             filesToProcess.push(newFile);
+            splitCreatedPaths.add(newFile.path);
             addLog(`    ✅ 已创建: ${newFile.basename}`);
           } catch (error: any) {
             addLog(`    ❌ 创建失败: ${note.filename} - ${error.message}`);
@@ -176,11 +201,11 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
 
         // 删除原笔记
         addLog('  🗑️ 删除原笔记...');
-        await plugin.app.vault.delete(activeFile);
+        await plugin.app.vault.delete(sourceFile);
         addLog('  ✅ 原笔记已删除');
       } else {
         addLog('📝 步骤2: 跳过拆分，直接处理当前笔记');
-        filesToProcess = [activeFile];
+        filesToProcess = [sourceFile];
       }
       addLog('');
 
@@ -198,65 +223,30 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
           let currentFile = file;
           let content = await plugin.app.vault.read(currentFile);
 
-          // 步骤3: 内容优化和格式化
+          // 步骤3: 内容格式优化
           addLog('📝 步骤3: 内容优化和格式化');
           if (plugin.settings.enableDocumentClassification) {
             try {
-              // 1) 获取可用模板并进行分类
-              const templateNames = await plugin.getTemplateNames();
-              if (!templateNames || templateNames.length === 0) {
-                addLog('  ℹ️ 未找到可用模板，跳过格式化');
-              } else {
-                const documentType = await plugin.classifyContentV2(
-                  content,
-                  templateNames
-                );
+              const fallbackInstructions = plugin.settings.optimizePrompt;
+              if (fallbackInstructions && fallbackInstructions.trim()) {
+                try {
+                  const formattedContent = await plugin.formatContentV2(
+                    content,
+                    fallbackInstructions
+                  );
 
-                if (!documentType) {
-                  addLog('  ℹ️ 无法确定文档类型，跳过格式化');
-                } else {
-                  // 2) 根据分类获取格式化指令
-                  const instructions = await plugin.getTemplateInstructions(documentType);
-                  if (!instructions || !instructions.trim()) {
-                    addLog('  ℹ️ 未获取到格式化指令，尝试使用 settings.optimizePrompt 作为回退');
-                    // 如果没有模板指令，使用 settings 中的 optimizePrompt 作为回退进行格式化
-                    const fallbackInstructions = plugin.settings.optimizePrompt;
-                    if (fallbackInstructions && fallbackInstructions.trim()) {
-                      try {
-                        const formattedContent = await plugin.formatContentV2(
-                          content,
-                          fallbackInstructions
-                        );
-
-                        if (formattedContent && formattedContent !== content) {
-                          await plugin.app.vault.modify(currentFile, formattedContent);
-                          content = formattedContent;
-                          addLog(`  ✅ 内容格式化完成（使用回退提示词）`);
-                        } else {
-                          addLog('  ℹ️ 回退提示词未做出修改，跳过格式化');
-                        }
-                      } catch (err: any) {
-                        addLog(`  ⚠️ 使用回退提示词格式化失败: ${err.message}`);
-                      }
-                    } else {
-                      addLog('  ℹ️ 未配置回退格式化提示词（optimizePrompt），跳过格式化');
-                    }
+                  if (formattedContent && formattedContent !== content) {
+                    await plugin.app.vault.modify(currentFile, formattedContent);
+                    content = formattedContent;
+                    addLog(`  ✅ 内容格式化完成（使用回退提示词）`);
                   } else {
-                    // 3) 执行格式化
-                    const formattedContent = await plugin.formatContentV2(
-                      content,
-                      instructions
-                    );
-
-                    if (formattedContent && formattedContent !== content) {
-                      await plugin.app.vault.modify(currentFile, formattedContent);
-                      content = formattedContent;
-                      addLog(`  ✅ 内容格式化完成（模板: ${documentType}）`);
-                    } else {
-                      addLog('  ℹ️ 内容无需格式化');
-                    }
+                    addLog('  ℹ️ 回退提示词未做出修改，跳过格式化');
                   }
+                } catch (err: any) {
+                  addLog(`  ⚠️ 使用回退提示词格式化失败: ${err.message}`);
                 }
+              } else {
+                addLog('  ℹ️ 未配置回退格式化提示词（optimizePrompt），跳过格式化');
               }
             } catch (error: any) {
               addLog(`  ⚠️ 格式化失败: ${error.message}`);
@@ -265,94 +255,7 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
             addLog('  ℹ️ 格式化功能未启用');
           }
 
-          // 步骤4: 文件重命名
-          addLog('📝 步骤4: 文件重命名');
-          try {
-            const titleSuggestions = await plugin.recommendName(content, currentFile.basename);
-            if (titleSuggestions && titleSuggestions.length > 0) {
-              const newName = titleSuggestions[0].title;
-              if (newName && newName !== currentFile.basename && currentFile.parent) {
-                addLog(`  建议名称: ${newName}`);
-                const newPath = `${currentFile.parent.path}/${newName}.md`;
-                await plugin.app.fileManager.renameFile(currentFile, newPath);
-                currentFile = plugin.app.vault.getAbstractFileByPath(newPath) as TFile;
-                addLog(`  ✅ 重命名为: ${newName}`);
-              } else {
-                addLog('  ℹ️ 文件名已合适，无需重命名');
-              }
-            }
-          } catch (error: any) {
-            addLog(`  ⚠️ 重命名失败: ${error.message}`);
-          }
-
-          // 步骤5: 元数据扩展
-          addLog('📝 步骤5: 元数据扩展');
-          metadata = null;
-          // 已迁移至步骤6；保留代码但不执行
-          if (false) {
-          if (plugin.settings.enableEnhancedMetadata && plugin.aiService.generateEnhancedMetadata) {
-            try {
-              metadata = await plugin.aiService.generateEnhancedMetadata({
-                content,
-                filename: currentFile.basename
-              });
-              addLog(`  ✅ 元数据生成成功`);
-              addLog(`    标题: ${metadata.title}`);
-              addLog(`    类别: ${metadata.category}`);
-              addLog(`    标签: ${metadata.tags?.join(', ') || '无'}`);
-            } catch (error: any) {
-              addLog(`  ⚠️ 元数据生成失败: ${error.message}`);
-            }
-          } else {
-            addLog('  ℹ️ 元数据扩展功能未启用');
-          }
-
-          // 步骤6: 应用元数据
-          if (metadata) {
-            addLog('📝 步骤6: 应用元数据');
-            try {
-              // 读取当前内容并更新
-              content = await plugin.app.vault.read(currentFile);
-              
-              // 构建YAML前言
-              const yamlFrontmatter = `---
-id: "${metadata.id || `${Date.now()}-${currentFile.basename}`}"
-title: "${metadata.title || currentFile.basename}"
-version: "${metadata.version || '1.0'}"
-create: ${metadata.create || new Date().toISOString().split('T')[0]}
-update: ${metadata.update || new Date().toISOString().split('T')[0]}
-source: "${metadata.source || '个人笔记'}"
-credibility: ${metadata.credibility || 5}
-cate: "${metadata.category || ''}"
-subcate: "${metadata.subcategory || ''}"
-tags: [${metadata.tags?.map((t: string) => `"${t}"`).join(', ') || ''}]
-summary: "${metadata.summary || ''}"
----
-
-`;
-              
-              // 如果已有YAML前言，替换；否则添加
-              if (content.startsWith('---')) {
-                const endIndex = content.indexOf('---', 3);
-                if (endIndex !== -1) {
-                  content = yamlFrontmatter + content.substring(endIndex + 4);
-                } else {
-                  content = yamlFrontmatter + content;
-                }
-              } else {
-                content = yamlFrontmatter + content;
-              }
-              
-              await plugin.app.vault.modify(currentFile, content);
-              addLog('  ✅ 元数据已应用');
-            } catch (error: any) {
-              addLog(`  ⚠️ 应用元数据失败: ${error.message}`);
-            }
-          } // 结束旧步骤5-6占位
-          }
-
-          metadata = null;
-          // 步骤5: 智能文件夹分类（优先选择已有 active folders，无合适再新建）
+          addLog("📝 步骤4: 文件重命名（已前置，跳过）");
           addLog('📝 步骤5: 智能文件夹分类');
           let targetFolder = currentFile.parent?.path || '';
           try {
@@ -390,7 +293,7 @@ summary: "${metadata.summary || ''}"
 
           // 步骤6: 元数据扩展与写入（移动完成后执行）
           addLog('📝 步骤6: 元数据扩展与写入');
-          metadata = null;
+          let metadata: any = null;
           try {
             if (plugin.settings.enableEnhancedMetadata && plugin.aiService.generateEnhancedMetadata) {
               metadata = await plugin.aiService.generateEnhancedMetadata({
@@ -737,4 +640,8 @@ summary: "${metadata?.summary || ''}"
     </div>
   );
 };
+
+
+
+
 
