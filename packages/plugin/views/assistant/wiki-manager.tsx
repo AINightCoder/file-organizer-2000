@@ -119,40 +119,40 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
       }
 
       // 预处理：内容格式优化（在拆分之前执行）
-      addLog('📝 预处理: 内容格式优化');
-      if (plugin.settings.enableDocumentClassification) {
-        try {
-          // Prompt selection order: caller/settings/DEFAULT
-          const fallbackInstructions = plugin.settings.optimizePrompt && plugin.settings.optimizePrompt.trim()
-            ? plugin.settings.optimizePrompt
-            : DEFAULT_OPTIMIZE_PROMPT;
-          if (fallbackInstructions && fallbackInstructions.trim()) {
-            try {
-              const formattedContent = await plugin.formatContentV2(
-                processingContent,
-                fallbackInstructions
-              );
+    //   addLog('📝 预处理: 内容格式优化');
+    //   if (plugin.settings.enableDocumentClassification) {
+    //     try {
+    //       // Prompt selection order: caller/settings/DEFAULT
+    //       const fallbackInstructions = plugin.settings.optimizePrompt && plugin.settings.optimizePrompt.trim()
+    //         ? plugin.settings.optimizePrompt
+    //         : DEFAULT_OPTIMIZE_PROMPT;
+    //       if (fallbackInstructions && fallbackInstructions.trim()) {
+    //         try {
+    //           const formattedContent = await plugin.formatContentV2(
+    //             processingContent,
+    //             fallbackInstructions
+    //           );
 
-              if (formattedContent && formattedContent !== processingContent) {
-                await plugin.app.vault.modify(sourceFile, formattedContent);
-                processingContent = formattedContent;
-                try { setFileContent(formattedContent); } catch {}
-                addLog(`  ✅ 内容格式化完成（预处理）`);
-              } else {
-                addLog('  ℹ️ 预处理提示词未做出修改，跳过格式化');
-              }
-            } catch (err: any) {
-              addLog(`  ⚠️ 预处理格式化失败: ${err.message}`);
-            }
-          } else {
-            addLog('  ℹ️ 未配置回退格式化提示词（optimizePrompt），跳过预处理格式化');
-          }
-        } catch (error: any) {
-          addLog(`  ⚠️ 预处理格式化失败: ${error.message}`);
-        }
-      } else {
-        addLog('  ℹ️ 格式化功能未启用');
-      }
+    //           if (formattedContent && formattedContent !== processingContent) {
+    //             await plugin.app.vault.modify(sourceFile, formattedContent);
+    //             processingContent = formattedContent;
+    //             try { setFileContent(formattedContent); } catch {}
+    //             addLog(`  ✅ 内容格式化完成（预处理）`);
+    //           } else {
+    //             addLog('  ℹ️ 预处理提示词未做出修改，跳过格式化');
+    //           }
+    //         } catch (err: any) {
+    //           addLog(`  ⚠️ 预处理格式化失败: ${err.message}`);
+    //         }
+    //       } else {
+    //         addLog('  ℹ️ 未配置回退格式化提示词（optimizePrompt），跳过预处理格式化');
+    //       }
+    //     } catch (error: any) {
+    //       addLog(`  ⚠️ 预处理格式化失败: ${error.message}`);
+    //     }
+    //   } else {
+    //     addLog('  ℹ️ 格式化功能未启用');
+    //   }
 
       // ===== 步骤1: 判断是否需要拆分 =====
       addLog('📝 步骤1: 检查是否需要拆分');
