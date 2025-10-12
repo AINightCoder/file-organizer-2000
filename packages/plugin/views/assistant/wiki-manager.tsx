@@ -13,6 +13,17 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingLog, setProcessingLog] = useState<string[]>([]);
 
+  // 确保按层级创建多级文件夹（替代过时的 plugin.createFolders）
+  const ensureNestedFolders = async (folderPath: string) => {
+    if (!folderPath) return;
+    const parts = folderPath.split('/').filter(Boolean);
+    let current = '';
+    for (const part of parts) {
+      current = current ? `${current}/${part}` : part;
+      await plugin.ensureFolderExists(current);
+    }
+  };
+
   useEffect(() => {
     // 监听活动文件变化
     const updateActiveFile = () => {
@@ -196,13 +207,39 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
           addLog('📝 步骤3: 内容优化和格式化');
           if (plugin.settings.enableDocumentClassification) {
             try {
-              const formattedContent = await plugin.formatContent(content, currentFile.basename);
-              if (formattedContent && formattedContent !== content) {
-                await plugin.app.vault.modify(currentFile, formattedContent);
-                content = formattedContent;
-                addLog('  ✅ 内容格式化完成');
+              // 1) 获取可用模板并进行分类
+              const templateNames = await plugin.getTemplateNames();
+              if (!templateNames || templateNames.length === 0) {
+                addLog('  ℹ️ 未找到可用模板，跳过格式化');
               } else {
-                addLog('  ℹ️ 内容无需格式化');
+                const documentType = await plugin.classifyContentV2(
+                  content,
+                  templateNames
+                );
+
+                if (!documentType) {
+                  addLog('  ℹ️ 无法确定文档类型，跳过格式化');
+                } else {
+                  // 2) 根据分类获取格式化指令
+                  const instructions = await plugin.getTemplateInstructions(documentType);
+                  if (!instructions || !instructions.trim()) {
+                    addLog('  ℹ️ 未获取到格式化指令，跳过格式化');
+                  } else {
+                    // 3) 执行格式化
+                    const formattedContent = await plugin.formatContentV2(
+                      content,
+                      instructions
+                    );
+
+                    if (formattedContent && formattedContent !== content) {
+                      await plugin.app.vault.modify(currentFile, formattedContent);
+                      content = formattedContent;
+                      addLog(`  ✅ 内容格式化完成（模板: ${documentType}）`);
+                    } else {
+                      addLog('  ℹ️ 内容无需格式化');
+                    }
+                  }
+                }
               }
             } catch (error: any) {
               addLog(`  ⚠️ 格式化失败: ${error.message}`);
@@ -306,7 +343,7 @@ summary: "${metadata.summary || ''}"
               // 确保文件夹存在
               const folderPath = suggestedFolder.startsWith('/') ? suggestedFolder.substring(1) : suggestedFolder;
               if (!plugin.app.vault.getAbstractFileByPath(folderPath)) {
-                await plugin.createFolders(folderPath);
+                await ensureNestedFolders(folderPath);
                 addLog(`  ✅ 创建文件夹: ${folderPath}`);
               }
               
@@ -327,14 +364,21 @@ summary: "${metadata.summary || ''}"
           addLog('📝 步骤8: 标签推荐');
           if (plugin.settings.useSimilarTags) {
             try {
-              const tagSuggestions = await plugin.getTagSuggestions(content, currentFile.basename);
-              if (tagSuggestions && tagSuggestions.length > 0) {
-                addLog(`  推荐标签: ${tagSuggestions.join(', ')}`);
-                
-                // 添加标签到内容
-                content = await plugin.app.vault.read(currentFile);
-                const tagsLine = `\n\n${tagSuggestions.map((tag: string) => `#${tag}`).join(' ')}`;
-                await plugin.app.vault.append(currentFile, tagsLine);
+              const existingTags = await plugin.getAllVaultTags();
+              const suggestions = await plugin.recommendTags(
+                content,
+                currentFile.path,
+                existingTags
+              );
+
+              if (suggestions && suggestions.length > 0) {
+                const tagsToAdd = suggestions.map(s => s.tag);
+                addLog(`  推荐标签: ${tagsToAdd.join(', ')}`);
+
+                // 使用插件提供的方法按设置安全添加标签
+                for (const s of suggestions) {
+                  await plugin.appendTag(currentFile, s.tag);
+                }
                 addLog('  ✅ 标签已添加');
               } else {
                 addLog('  ℹ️ 无标签推荐');
@@ -356,7 +400,7 @@ summary: "${metadata.summary || ''}"
               
               if (!roadmapFile) {
                 addLog('  创建Roadmap文件...');
-                await plugin.createFolders(`${targetFolder}/01.Roadmap`);
+                await ensureNestedFolders(`${targetFolder}/01.Roadmap`);
                 roadmapFile = await plugin.app.vault.create(roadmapPath, `# ${metadata.category} Roadmap\n\n`);
                 addLog(`  ✅ 已创建: ${roadmapPath}`);
               }
