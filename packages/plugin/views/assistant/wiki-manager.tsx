@@ -71,8 +71,9 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
     try {
       addLog('🚀 开始完整处理流程...');
       const splitCreatedPaths = new Set<string>();
+      let processingContent = fileContent;
       addLog(`📋 当前文件: ${activeFile.basename}`);
-      addLog(`📏 内容长度: ${fileContent.length} 字符`);
+      addLog(`📏 内容长度: ${processingContent.length} 字符`);
       addLog('');
 
       // 检查AI服务
@@ -105,17 +106,50 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
         addLog(`  ⚠️ 预处理重命名失败: ${e.message}`);
       }
 
+      // 预处理：内容格式优化（在拆分之前执行）
+      addLog('📝 预处理: 内容格式优化');
+      if (plugin.settings.enableDocumentClassification) {
+        try {
+          const fallbackInstructions = plugin.settings.optimizePrompt;
+          if (fallbackInstructions && fallbackInstructions.trim()) {
+            try {
+              const formattedContent = await plugin.formatContentV2(
+                processingContent,
+                fallbackInstructions
+              );
+
+              if (formattedContent && formattedContent !== processingContent) {
+                await plugin.app.vault.modify(sourceFile, formattedContent);
+                processingContent = formattedContent;
+                try { setFileContent(formattedContent); } catch {}
+                addLog(`  ✅ 内容格式化完成（预处理）`);
+              } else {
+                addLog('  ℹ️ 预处理提示词未做出修改，跳过格式化');
+              }
+            } catch (err: any) {
+              addLog(`  ⚠️ 预处理格式化失败: ${err.message}`);
+            }
+          } else {
+            addLog('  ℹ️ 未配置回退格式化提示词（optimizePrompt），跳过预处理格式化');
+          }
+        } catch (error: any) {
+          addLog(`  ⚠️ 预处理格式化失败: ${error.message}`);
+        }
+      } else {
+        addLog('  ℹ️ 格式化功能未启用');
+      }
+
       // ===== 步骤1: 判断是否需要拆分 =====
       addLog('📝 步骤1: 检查是否需要拆分');
       let needsSplit = false;
       let atomicNotes: any[] = [];
 
-      if (fileContent.length >= plugin.settings.minNoteLength && plugin.settings.enableAtomicSplit) {
+      if (processingContent.length >= plugin.settings.minNoteLength && plugin.settings.enableAtomicSplit) {
         addLog('  正在分析知识点...');
         
         try {
           atomicNotes = await plugin.aiService.splitIntoAtomicNotes({
-            content: fileContent,
+            content: processingContent,
             filename: sourceFile.basename,
             customPrompt: plugin.settings.atomicSplitPrompt
           });
@@ -134,7 +168,7 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
           addLog('  ℹ️ 将作为单一笔记处理');
         }
       } else {
-        addLog(`  ℹ️ 内容长度 ${fileContent.length} < ${plugin.settings.minNoteLength}，跳过拆分`);
+        addLog(`  ℹ️ 内容长度 ${processingContent.length} < ${plugin.settings.minNoteLength}，跳过拆分`);
       }
       addLog('');
 
@@ -223,37 +257,8 @@ export const WikiManager: React.FC<WikiManagerProps> = ({ plugin }) => {
           let currentFile = file;
           let content = await plugin.app.vault.read(currentFile);
 
-          // 步骤3: 内容格式优化
-          addLog('📝 步骤3: 内容优化和格式化');
-          if (plugin.settings.enableDocumentClassification) {
-            try {
-              const fallbackInstructions = plugin.settings.optimizePrompt;
-              if (fallbackInstructions && fallbackInstructions.trim()) {
-                try {
-                  const formattedContent = await plugin.formatContentV2(
-                    content,
-                    fallbackInstructions
-                  );
-
-                  if (formattedContent && formattedContent !== content) {
-                    await plugin.app.vault.modify(currentFile, formattedContent);
-                    content = formattedContent;
-                    addLog(`  ✅ 内容格式化完成（使用回退提示词）`);
-                  } else {
-                    addLog('  ℹ️ 回退提示词未做出修改，跳过格式化');
-                  }
-                } catch (err: any) {
-                  addLog(`  ⚠️ 使用回退提示词格式化失败: ${err.message}`);
-                }
-              } else {
-                addLog('  ℹ️ 未配置回退格式化提示词（optimizePrompt），跳过格式化');
-              }
-            } catch (error: any) {
-              addLog(`  ⚠️ 格式化失败: ${error.message}`);
-            }
-          } else {
-            addLog('  ℹ️ 格式化功能未启用');
-          }
+          // 步骤3: 内容格式优化（已前置，跳过）
+          addLog('📝 步骤3: 内容格式优化（已前置，跳过）');
 
           addLog("📝 步骤4: 文件重命名（已前置，跳过）");
           addLog('📝 步骤5: 智能文件夹分类');
@@ -375,9 +380,6 @@ summary: "${metadata?.summary || ''}"
           // 步骤7: Roadmap 关联
           addLog('📝 步骤7: Roadmap 关联');
 
-          // Debug: 明确记录当前设置，便于排查
-          addLog(`  debug: enableRoadmapLinking=${!!plugin.settings.enableRoadmapLinking}`);
-
           // 更明确的判断和回退策略：
           // 1) 如果设置关闭 => 明确提示
           // 2) 如果 metadata.category 缺失 => 尝试从文件 YAML 前言回退读取 category
@@ -421,12 +423,28 @@ summary: "${metadata?.summary || ''}"
                   // 尝试用 AI 生成完整 Roadmap 内容（使用 settings 中的提示词）
                   try {
                     const domain = domainCate || metadata?.title || '通用领域';
-                    const roadmapPrompt = plugin.settings.roadmapPrompt;
+                    const roadmapPrompt = plugin.settings.roadmapPrompt || '';
                     let roadmapContent: string | null = null;
+
+                    // Prepare final prompt: replace ${domain} placeholders, and if no placeholder exists,
+                    // include the domain explicitly so the AI receives the domain context.
+                    let finalRoadmapPrompt: string | undefined = undefined;
+                    if (roadmapPrompt && roadmapPrompt.includes('${domain}')) {
+                      finalRoadmapPrompt = roadmapPrompt.replace(/\$\{domain\}/g, domain);
+                      addLog('  ℹ️ roadmapPrompt 中的占位符 ${domain} 已替换');
+                    } else if (roadmapPrompt && roadmapPrompt.trim().length > 0) {
+                      // No explicit placeholder: append domain context to be safe
+                      finalRoadmapPrompt = `${roadmapPrompt}\n\n领域: ${domain}`;
+                      addLog('  ℹ️ roadmapPrompt 未包含占位符，已附加领域上下文');
+                    } else {
+                      // No custom prompt configured: use a concise default prompt including the domain
+                      finalRoadmapPrompt = `请为学习领域 "${domain}" 设计一个清晰、循序渐进的学习路线图。`;
+                      addLog('  ℹ️ 未配置 roadmapPrompt，使用默认提示词');
+                    }
 
                     if (plugin.aiService && plugin.aiService.generateRoadmap) {
                       addLog('  ℹ️ 使用 AI 生成 Roadmap 内容...');
-                      roadmapContent = await plugin.aiService.generateRoadmap({ domain, customPrompt: roadmapPrompt });
+                      roadmapContent = await plugin.aiService.generateRoadmap({ domain, customPrompt: finalRoadmapPrompt });
                       if (roadmapContent && typeof roadmapContent === 'string' && roadmapContent.trim().length > 0) {
                         roadmapFile = await plugin.app.vault.create(roadmapPath, roadmapContent);
                         addLog(`  ✅ 已使用 AI 生成并创建: ${roadmapPath}`);
