@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import FileOrganizer from '../../index';
-import { DEFAULT_FOLDER_PROMPT } from '../../prompts';
+import { DEFAULT_FOLDER_PROMPT, DEFAULT_ATOMIC_SPLIT_PROMPT, DEFAULT_LENGTH_SPLIT_PROMPT, DEFAULT_CLASSIFY_PROMPT, DEFAULT_RENAME_INSTRUCTIONS, DEFAULT_ENHANCED_METADATA_PROMPT, DEFAULT_OPTIMIZE_PROMPT, DEFAULT_TAG_INSTRUCTIONS, DEFAULT_IMAGE_INSTRUCTIONS, DEFAULT_ROADMAP_PROMPT } from '../../prompts';
 import { TFile } from 'obsidian';
 
 interface KnowledgeTestTabProps {
@@ -55,26 +55,26 @@ flutter doctor -v
   const [showCustomPrompts, setShowCustomPrompts] = useState(false);
   const [customPrompts, setCustomPrompts] = useState({
     // 步骤1: 原子化拆分
-    atomicSplit: plugin.settings.atomicSplitPrompt,
+    atomicSplit: plugin.settings.atomicSplitPrompt || DEFAULT_ATOMIC_SPLIT_PROMPT,
     // 步骤2: 按长度拆分
-    lengthSplit: plugin.settings.lengthSplitPrompt,
+    lengthSplit: plugin.settings.lengthSplitPrompt || DEFAULT_LENGTH_SPLIT_PROMPT,
     // 步骤3: 内容分类（后端使用）
-    classify: plugin.settings.classifyPrompt,
+    classify: plugin.settings.classifyPrompt || DEFAULT_CLASSIFY_PROMPT,
     // 步骤4: 文件重命名
-    rename: plugin.settings.renameInstructions,
+    rename: plugin.settings.renameInstructions || DEFAULT_RENAME_INSTRUCTIONS,
     // 步骤5: 增强元数据
-    metadata: plugin.settings.enhancedMetadataPrompt,
+    metadata: plugin.settings.enhancedMetadataPrompt || DEFAULT_ENHANCED_METADATA_PROMPT,
   // 步骤3/7: 内容优化和格式化提示词（optimize/format）
-  optimize: plugin.settings.optimizePrompt,
+  optimize: plugin.settings.optimizePrompt || DEFAULT_OPTIMIZE_PROMPT,
     // 步骤7: 文件夹分类
-    folder: plugin.settings.customFolderInstructions,
+    folder: plugin.settings.customFolderInstructions || DEFAULT_FOLDER_PROMPT,
     // 步骤8: 标签推荐
-    tags: plugin.settings.customTagInstructions
+    tags: plugin.settings.customTagInstructions || DEFAULT_TAG_INSTRUCTIONS
     ,
     // 图片分析提示词
-    image: plugin.settings.imageInstructions,
+    image: plugin.settings.imageInstructions || DEFAULT_IMAGE_INSTRUCTIONS,
     // Roadmap 生成提示词
-    roadmap: plugin.settings.roadmapPrompt
+    roadmap: plugin.settings.roadmapPrompt || DEFAULT_ROADMAP_PROMPT
   });
 
   const addLog = (message: string) => {
@@ -542,7 +542,7 @@ flutter doctor -v
                 value={customPrompts.atomicSplit}
                 onChange={(e) => setCustomPrompts({...customPrompts, atomicSplit: e.target.value})}
                 className="w-full h-32 p-2 border border-gray-300 rounded text-sm font-mono"
-                placeholder="输入原子化拆分提示词..."
+                placeholder={plugin.settings.atomicSplitPrompt ? "输入原子化拆分提示词..." : DEFAULT_ATOMIC_SPLIT_PROMPT.substring(0, 180) + '...'}
               />
               <div className="mt-1 text-xs text-gray-500">
                 支持占位符: $&#123;filename&#125;, $&#123;content&#125;
@@ -559,7 +559,7 @@ flutter doctor -v
                 value={customPrompts.lengthSplit}
                 onChange={(e) => setCustomPrompts({...customPrompts, lengthSplit: e.target.value})}
                 className="w-full h-32 p-2 border border-gray-300 rounded text-sm font-mono"
-                placeholder="输入按长度拆分提示词..."
+                placeholder={plugin.settings.lengthSplitPrompt ? "输入按长度拆分提示词..." : DEFAULT_LENGTH_SPLIT_PROMPT.substring(0, 180) + '...'}
               />
               <div className="mt-1 text-xs text-gray-500">
                 支持占位符: $&#123;maxLength&#125;, $&#123;content&#125;
@@ -576,7 +576,7 @@ flutter doctor -v
                 value={customPrompts.classify}
                 onChange={(e) => setCustomPrompts({...customPrompts, classify: e.target.value})}
                 className="w-full h-24 p-2 border border-gray-300 rounded text-sm font-mono"
-                placeholder="输入内容分类提示词..."
+                placeholder={plugin.settings.classifyPrompt ? "输入内容分类提示词..." : DEFAULT_CLASSIFY_PROMPT.substring(0, 180) + '...'}
               />
               <div className="mt-1 text-xs text-gray-500">
                 支持占位符: $&#123;templateNames&#125;, $&#123;content&#125; | 注意：此提示词由后端API使用
@@ -593,7 +593,7 @@ flutter doctor -v
                 value={customPrompts.rename}
                 onChange={(e) => setCustomPrompts({...customPrompts, rename: e.target.value})}
                 className="w-full h-24 p-2 border border-gray-300 rounded text-sm font-mono"
-                placeholder="输入重命名提示词..."
+                placeholder={plugin.settings.renameInstructions ? "输入重命名提示词..." : DEFAULT_RENAME_INSTRUCTIONS.substring(0, 180) + '...'}
               />
               <div className="mt-1 text-xs text-gray-500">
                 作为 customInstructions 传递给 AI
@@ -610,7 +610,7 @@ flutter doctor -v
                 value={customPrompts.metadata}
                 onChange={(e) => setCustomPrompts({...customPrompts, metadata: e.target.value})}
                 className="w-full h-32 p-2 border border-gray-300 rounded text-sm font-mono"
-                placeholder="输入元数据生成提示词..."
+                placeholder={plugin.settings.enhancedMetadataPrompt ? "输入元数据生成提示词..." : DEFAULT_ENHANCED_METADATA_PROMPT.substring(0, 180) + '...'}
               />
               <div className="mt-1 text-xs text-gray-500">
                 支持占位符: $&#123;categoriesHint&#125;, $&#123;filename&#125;, $&#123;content&#125;
@@ -627,7 +627,7 @@ flutter doctor -v
                 value={customPrompts.optimize}
                 onChange={(e) => setCustomPrompts({...customPrompts, optimize: e.target.value})}
                 className="w-full h-28 p-2 border border-gray-300 rounded text-sm font-mono"
-                placeholder="输入内容优化和格式化提示词..."
+                placeholder={plugin.settings.optimizePrompt ? "输入内容优化和格式化提示词..." : DEFAULT_OPTIMIZE_PROMPT.substring(0, 180) + '...'}
               />
               <div className="mt-1 text-xs text-gray-500">
                 用于在模板指令缺失时作为回退格式化提示词。支持占位符: {'${content}'}。
@@ -661,7 +661,7 @@ flutter doctor -v
                 value={customPrompts.tags}
                 onChange={(e) => setCustomPrompts({...customPrompts, tags: e.target.value})}
                 className="w-full h-24 p-2 border border-gray-300 rounded text-sm font-mono"
-                placeholder="输入标签生成提示词..."
+                placeholder={plugin.settings.customTagInstructions ? "输入标签生成提示词..." : DEFAULT_TAG_INSTRUCTIONS.substring(0, 180) + '...'}
               />
               <div className="mt-1 text-xs text-gray-500">
                 作为 customInstructions 传递给 AI
@@ -678,7 +678,7 @@ flutter doctor -v
                 value={customPrompts.image}
                 onChange={(e) => setCustomPrompts({...customPrompts, image: e.target.value})}
                 className="w-full h-24 p-2 border border-gray-300 rounded text-sm font-mono"
-                placeholder="输入图片分析提示词..."
+                placeholder={plugin.settings.imageInstructions ? "输入图片分析提示词..." : DEFAULT_IMAGE_INSTRUCTIONS.substring(0, 180) + '...'}
               />
               <div className="mt-1 text-xs text-gray-500">
                 用于图片 OCR/视觉描述，确保包含要点提取指令
@@ -695,7 +695,7 @@ flutter doctor -v
                 value={customPrompts.roadmap}
                 onChange={(e) => setCustomPrompts({...customPrompts, roadmap: e.target.value})}
                 className="w-full h-40 p-2 border border-gray-300 rounded text-sm font-mono"
-                placeholder="输入 Roadmap 生成提示词..."
+                placeholder={plugin.settings.roadmapPrompt ? "输入 Roadmap 生成提示词..." : DEFAULT_ROADMAP_PROMPT.substring(0, 180) + '...'}
               />
               <div className="mt-1 text-xs text-gray-500">
                 用于生成学习路线图，支持占位符: {'${domain}'}。默认来自 docs/flow/参考流程.md。
