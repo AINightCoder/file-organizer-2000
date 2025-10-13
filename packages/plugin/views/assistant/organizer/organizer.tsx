@@ -4,16 +4,10 @@ import FileOrganizer from "../../../index";
 import { debounce } from "lodash";
 
 import { SectionHeader } from "../section-header";
-import { SimilarTags } from "./tags";
-import { AtomicNotes } from "./chunks";
-import { RenameSuggestion } from "./titles/box";
-import { SimilarFolderBox } from "./folders/box";
 import { RefreshButton } from "./components/refresh-button";
-import { ClassificationContainer } from "./ai-format/templates";
-import { TranscriptionButton } from "./transcript";
 import { EmptyState } from "./components/empty-state";
+import { ProcessWorkflow } from "./process-workflow";
 import { logMessage } from "../../../someUtils";
-import { LicenseValidator } from "./components/license-validator";
 import { VALID_MEDIA_EXTENSIONS } from "../../../constants";
 import { logger } from "../../../services/logger";
 
@@ -181,75 +175,12 @@ export const AssistantView: React.FC<AssistantViewProps> = ({
       </div>
 
       {renderSection(
-        <ClassificationContainer
+        <ProcessWorkflow
           plugin={plugin}
           file={activeFile}
           content={noteContent}
-          refreshKey={refreshKey}
         />,
-        "Error loading classification"
-      )}
-
-      <SectionHeader text="Tags" icon="🏷️ " />
-      {renderSection(
-        <SimilarTags
-          plugin={plugin}
-          file={activeFile}
-          content={noteContent}
-          refreshKey={refreshKey}
-        />,
-        "Error loading tags"
-      )}
-
-      {plugin.settings.enableTitleSuggestions && (
-        <>
-          <SectionHeader text="Titles" icon="💡 " />
-          {renderSection(
-            <RenameSuggestion
-              plugin={plugin}
-              file={activeFile}
-              content={noteContent}
-              refreshKey={refreshKey}
-            />,
-            "Error loading title suggestions"
-          )}
-        </>
-      )}
-
-      <SectionHeader text="Folders" icon="📁 " />
-      {renderSection(
-        <SimilarFolderBox
-          plugin={plugin}
-          file={activeFile}
-          content={noteContent}
-          refreshKey={refreshKey}
-        />,
-        "Error loading folder suggestions"
-      )}
-
-
-      {plugin.settings.enableAtomicNotes && (
-        <>
-          <SectionHeader text="Atomic notes" icon="✂️ " />
-          {renderSection(
-            <AtomicNotes plugin={plugin} activeFile={activeFile} />,
-            "Error loading atomic notes"
-          )}
-        </>
-      )}
-
-      {hasAudioEmbed(noteContent) && (
-        <>
-          <SectionHeader text="Audio Transcription" icon="🎙️ " />
-          {renderSection(
-            <TranscriptionButton
-              plugin={plugin}
-              file={activeFile}
-              content={noteContent}
-            />,
-            "Error loading transcription button"
-          )}
-        </>
+        "Error loading process workflow"
       )}
     </div>
   );
