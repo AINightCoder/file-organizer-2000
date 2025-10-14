@@ -20,6 +20,9 @@ export const RenameStepDetail: React.FC<StepDetailProps> = ({
   onRetry
 }) => {
   const data = result?.data;
+  const [selectedName, setSelectedName] = React.useState<string>(data?.newName || '');
+  const [customName, setCustomName] = React.useState<string>('');
+  const [showCustomInput, setShowCustomInput] = React.useState(false);
 
   if (data?.noChange) {
     return (
@@ -32,7 +35,7 @@ export const RenameStepDetail: React.FC<StepDetailProps> = ({
         </div>
         <div className="fo-flex fo-gap-2">
           <button
-            onClick={onApply}
+            onClick={() => onApply()}
             className="fo-px-4 fo-py-2 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded fo-font-medium"
           >
             ✓ 继续
@@ -41,6 +44,16 @@ export const RenameStepDetail: React.FC<StepDetailProps> = ({
       </div>
     );
   }
+
+  const suggestions = data?.suggestions || [];
+  const oldName = data?.oldName || '';
+
+  const handleApplyClick = () => {
+    const finalName = showCustomInput && customName.trim()
+      ? customName.trim()
+      : selectedName;
+    onApply({ selectedName: finalName });
+  };
 
   return (
     <div className="step-detail p-4 bg-[--background-secondary] rounded-lg">
@@ -52,36 +65,109 @@ export const RenameStepDetail: React.FC<StepDetailProps> = ({
         <div className="fo-text-green-600">状态: ✅ 重命名建议已生成</div>
       </div>
 
-      <div className="fo-mb-3 fo-space-y-2">
-        <div className="fo-flex fo-items-center fo-gap-2">
-          <span className="fo-text-[--text-muted]">原名称:</span>
-          <span className="fo-font-medium">{data?.oldName}</span>
-        </div>
-        <div className="fo-flex fo-items-center fo-gap-2">
-          <span className="fo-text-[--text-muted]">建议名称:</span>
-          <span className="fo-font-medium fo-text-[--interactive-accent]">{data?.newName}</span>
+      <div className="fo-mb-3">
+        <div className="fo-flex fo-items-center fo-gap-2 fo-mb-2">
+          <span className="fo-text-sm fo-text-[--text-muted]">当前名称:</span>
+          <span className="fo-font-medium fo-text-[--text-normal]">{oldName}</span>
         </div>
       </div>
 
-      {data?.suggestions && data.suggestions.length > 1 && (
-        <details className="fo-mb-3">
-          <summary className="fo-text-xs fo-text-[--text-muted] fo-cursor-pointer">
-            查看更多建议 ({data.suggestions.length})
-          </summary>
-          <div className="fo-mt-2 fo-space-y-1 fo-pl-4">
-            {data.suggestions.slice(1).map((s: any, idx: number) => (
-              <div key={idx} className="fo-text-sm fo-text-[--text-muted]">
-                • {s.title}
+      <div className="fo-mb-3">
+        <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">
+          📝 请选择新的文件名：
+        </div>
+        <div className="fo-space-y-2 fo-max-h-80 fo-overflow-y-auto">
+          {suggestions.map((suggestion: any, idx: number) => {
+            const isSelected = selectedName === suggestion.title && !showCustomInput;
+
+            return (
+              <div
+                key={idx}
+                onClick={() => {
+                  setSelectedName(suggestion.title);
+                  setShowCustomInput(false);
+                }}
+                className={`fo-p-3 fo-border fo-rounded fo-cursor-pointer fo-transition-colors ${
+                  isSelected
+                    ? 'fo-border-[--interactive-accent] fo-bg-[--interactive-accent]/10'
+                    : 'fo-border-[--background-modifier-border] hover:fo-border-[--interactive-accent]/50 hover:fo-bg-[--background-modifier-hover]'
+                }`}
+              >
+                <div className="fo-flex fo-items-center fo-gap-2">
+                  <input
+                    type="radio"
+                    checked={isSelected}
+                    onChange={() => {
+                      setSelectedName(suggestion.title);
+                      setShowCustomInput(false);
+                    }}
+                    className="fo-cursor-pointer"
+                  />
+                  <span className="fo-font-medium fo-text-[--text-normal] fo-flex-1">
+                    {suggestion.title}
+                  </span>
+                  {idx === 0 && (
+                    <span className="fo-text-xs fo-px-2 fo-py-0.5 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded">
+                      推荐
+                    </span>
+                  )}
+                </div>
+                {suggestion.reason && (
+                  <div className="fo-mt-1 fo-ml-6 fo-text-sm fo-text-[--text-muted]">
+                    💡 {suggestion.reason}
+                  </div>
+                )}
               </div>
-            ))}
+            );
+          })}
+
+          {/* 自定义选项 */}
+          <div
+            onClick={() => {
+              setShowCustomInput(true);
+              setCustomName(oldName);
+            }}
+            className={`fo-p-3 fo-border fo-rounded fo-cursor-pointer fo-transition-colors ${
+              showCustomInput
+                ? 'fo-border-[--interactive-accent] fo-bg-[--interactive-accent]/10'
+                : 'fo-border-[--background-modifier-border] hover:fo-border-[--interactive-accent]/50 hover:fo-bg-[--background-modifier-hover]'
+            }`}
+          >
+            <div className="fo-flex fo-items-center fo-gap-2">
+              <input
+                type="radio"
+                checked={showCustomInput}
+                onChange={() => {
+                  setShowCustomInput(true);
+                  setCustomName(oldName);
+                }}
+                className="fo-cursor-pointer"
+              />
+              <span className="fo-font-medium fo-text-[--text-normal]">
+                自定义文件名
+              </span>
+            </div>
+            {showCustomInput && (
+              <div className="fo-mt-2 fo-ml-6">
+                <input
+                  type="text"
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  placeholder="输入自定义文件名..."
+                  className="fo-w-full fo-px-3 fo-py-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded focus:fo-border-[--interactive-accent] focus:fo-outline-none"
+                />
+              </div>
+            )}
           </div>
-        </details>
-      )}
+        </div>
+      </div>
 
       <div className="fo-flex fo-gap-2">
         <button
-          onClick={onApply}
-          className="fo-px-4 fo-py-2 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded fo-font-medium"
+          onClick={handleApplyClick}
+          disabled={!selectedName && (!showCustomInput || !customName.trim())}
+          className="fo-px-4 fo-py-2 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded fo-font-medium disabled:fo-opacity-50 disabled:fo-cursor-not-allowed"
         >
           ✓ 应用并继续
         </button>

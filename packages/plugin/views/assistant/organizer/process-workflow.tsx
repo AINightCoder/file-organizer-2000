@@ -104,6 +104,16 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
 
       if (suggestions && suggestions.length > 0) {
         const newName = suggestions[0].title;
+        // Defer renaming to user confirmation in handleApply (step 1)
+        return {
+          success: true,
+          updatedFile: file,
+          data: {
+            oldName: file.basename,
+            newName: newName,
+            suggestions: suggestions
+          }
+        };
         if (newName && newName !== file.basename && file.parent) {
           addLog(`  建议名称: ${newName}`);
           const newPath = `${file.parent.path}/${newName}.md`;
@@ -689,6 +699,41 @@ summary: "${metadata?.summary || ''}"
   const handleApply = React.useCallback(async (userChoice?: any) => {
     const stepIndex = currentStepIndex;
 
+    // Step 1: Rename — apply selected name on confirm
+    if (stepIndex === 0) {
+      try {
+        const data = steps[0]?.result?.data || {};
+        const chosen = (userChoice?.selectedName ?? data?.newName ?? '').trim();
+        const currentName = currentFile.basename;
+        if (chosen && chosen !== currentName) {
+          const parentPath = currentFile.parent?.path || '';
+          const newPath = parentPath ? `${parentPath}/${chosen}.md` : `${chosen}.md`;
+          await plugin.app.fileManager.renameFile(currentFile, newPath);
+          const newFile = plugin.app.vault.getAbstractFileByPath(newPath) as TFile;
+          if (newFile) {
+            setCurrentFile(newFile);
+            const newContent = await plugin.app.vault.read(newFile);
+            setCurrentContent(newContent);
+            addLog(`  ✅ 应用文件名: ${chosen}`);
+            updateStepResult(0, {
+              ...(steps[0].result || { success: true }),
+              updatedFile: newFile,
+              data: {
+                ...(data || {}),
+                newName: chosen,
+                oldName: currentName,
+                userSelected: !!userChoice?.selectedName && userChoice?.selectedName !== data?.newName
+              }
+            });
+          }
+        }
+      } catch (e: any) {
+        addLog(`  ❗重命名失败: ${e.message}`);
+        new Notice(`重命名失败: ${e.message}`);
+        return;
+      }
+    }
+
     // 如果是步骤3（二级目录分类）且用户做了选择，需要创建文件夹并更新结果
     if (stepIndex === 2 && userChoice?.selectedFolder) {
       const selectedFolder = userChoice.selectedFolder;
@@ -719,7 +764,10 @@ summary: "${metadata?.summary || ''}"
 
     updateStepStatus(stepIndex, 'completed');
     addLog(`✅ 已应用步骤${stepIndex + 1}`);
-    addLog(`  当前文件: ${currentFile.basename}`);
+    const __nameForLog = stepIndex === 0
+      ? ((userChoice?.selectedName ?? steps[0]?.result?.data?.newName) || currentFile.basename)
+      : currentFile.basename;
+    addLog(`  当前文件: ${__nameForLog}`);
 
     if (stepIndex < 5) {
       setCurrentStepIndex(stepIndex + 1);
