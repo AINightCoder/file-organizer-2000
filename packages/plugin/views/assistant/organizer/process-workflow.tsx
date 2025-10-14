@@ -183,27 +183,30 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       if (suggestions && suggestions.length > 0) {
         const normalizePath = (p: string) => (p.startsWith('/') ? p.substring(1) : p);
         const suggestionsNorm = suggestions.map((s: any) => ({ ...s, folder: normalizePath(s.folder) }));
+
+        // 标记已存在的文件夹
         const exists = (p: string) => !!plugin.app.vault.getAbstractFileByPath(p);
-        const existing = suggestionsNorm.filter((s: any) => exists(s.folder));
-        const pick = (arr: any[]) => arr.sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
-        const chosenL2 = (existing.length > 0) ? pick(existing) : pick(suggestionsNorm);
-        const level2Folder = chosenL2.folder;
+        const withExistence = suggestionsNorm.map((s: any) => ({
+          ...s,
+          exists: exists(s.folder)
+        }));
 
-        addLog(`  选择二级目录: ${level2Folder}${existing.length > 0 ? '（已存在）' : '（新建）'}`);
+        // 默认选择评分最高的
+        const sorted = [...withExistence].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+        const defaultChoice = sorted[0];
 
-        const l2FolderPath = level2Folder.startsWith('/') ? level2Folder.substring(1) : level2Folder;
-        if (!plugin.app.vault.getAbstractFileByPath(l2FolderPath)) {
-          await ensureNestedFolders(l2FolderPath);
-          addLog(`  ✅ 创建二级目录: ${l2FolderPath}`);
-        }
+        addLog(`  生成 ${suggestions.length} 个二级目录建议`);
+        addLog(`  默认推荐: ${defaultChoice.folder}`);
 
-        // 暂时不移动文件，留到步骤4完成后统一移动
+        // 不在这里创建文件夹，等用户确认后再创建
+        // 返回所有建议供用户选择
         return {
           success: true,
           updatedFile: file,
           data: {
-            level2Folder: l2FolderPath,
-            suggestions: suggestions
+            level2Folder: defaultChoice.folder,  // 默认选择
+            suggestions: withExistence,  // 所有建议
+            defaultChoice: defaultChoice.folder
           }
         };
       } else {
@@ -213,7 +216,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     } catch (error: any) {
       return { success: false, error: error.message };
     }
-  }, [plugin, addLog, ensureNestedFolders]);
+  }, [plugin, addLog]);
 
   // 步骤4: 三级目录分类
   const doLevel3Classification = React.useCallback(async (file: TFile): Promise<StepResult> => {
@@ -662,17 +665,58 @@ summary: "${metadata?.summary || ''}"
 
   // 开始处理
   const handleStartProcess = React.useCallback(async () => {
+    // 确保以父组件当前激活的笔记为起点（避免使用挂载时的 stale state）
+    setCurrentFile(initialFile);
+    setCurrentContent(initialContent);
+
     setWorkflowStatus('running');
     setCurrentStepIndex(0);
     setSteps(INITIAL_STEPS);
     setProcessingLog([]);
     addLog('▶️ 开始处理流程');
     await executeStep(0);
-  }, [addLog, executeStep]);
+  }, [addLog, executeStep, initialFile, initialContent]);
+
+  // 在空闲状态下，跟随父组件传入的最新文件与内容，保持与激活 tab 同步
+  React.useEffect(() => {
+    if (workflowStatus === 'idle') {
+      setCurrentFile(initialFile);
+      setCurrentContent(initialContent);
+    }
+  }, [initialFile, initialContent, workflowStatus]);
 
   // 应用并继续
-  const handleApply = React.useCallback(async () => {
+  const handleApply = React.useCallback(async (userChoice?: any) => {
     const stepIndex = currentStepIndex;
+
+    // 如果是步骤3（二级目录分类）且用户做了选择，需要创建文件夹并更新结果
+    if (stepIndex === 2 && userChoice?.selectedFolder) {
+      const selectedFolder = userChoice.selectedFolder;
+      addLog(`✅ 用户选择二级目录: ${selectedFolder}`);
+
+      try {
+        // 创建文件夹（如果不存在）
+        if (!plugin.app.vault.getAbstractFileByPath(selectedFolder)) {
+          await ensureNestedFolders(selectedFolder);
+          addLog(`  ✅ 创建二级目录: ${selectedFolder}`);
+        }
+
+        // 更新步骤结果，保存用户选择
+        updateStepResult(stepIndex, {
+          ...steps[stepIndex].result,
+          data: {
+            ...steps[stepIndex].result?.data,
+            level2Folder: selectedFolder,
+            userSelected: true
+          }
+        });
+      } catch (error: any) {
+        addLog(`  ❌ 创建目录失败: ${error.message}`);
+        new Notice(`创建目录失败: ${error.message}`);
+        return;
+      }
+    }
+
     updateStepStatus(stepIndex, 'completed');
     addLog(`✅ 已应用步骤${stepIndex + 1}`);
     addLog(`  当前文件: ${currentFile.basename}`);
@@ -686,7 +730,7 @@ summary: "${metadata?.summary || ''}"
       addLog('🎉 全部流程完成！');
       new Notice('处理完成！');
     }
-  }, [currentStepIndex, currentFile, updateStepStatus, addLog, executeStep]);
+  }, [currentStepIndex, currentFile, updateStepStatus, addLog, executeStep, steps, plugin, ensureNestedFolders, updateStepResult]);
 
   // 重试当前步骤
   const handleRetry = React.useCallback(async (params?: any) => {

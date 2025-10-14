@@ -6,7 +6,7 @@ interface StepDetailProps {
   stepName: string;
   icon: string;
   result: any;
-  onApply: () => void;
+  onApply: (userChoice?: any) => void;
   onRetry: (params?: any) => void;
 }
 
@@ -209,6 +209,7 @@ export const Level2FolderStepDetail: React.FC<StepDetailProps> = ({
   onRetry
 }) => {
   const data = result?.data;
+  const [selectedFolder, setSelectedFolder] = React.useState<string>(data?.level2Folder || '');
 
   if (data?.noChange) {
     return (
@@ -231,6 +232,9 @@ export const Level2FolderStepDetail: React.FC<StepDetailProps> = ({
     );
   }
 
+  const suggestions = data?.suggestions || [];
+  const sortedSuggestions = [...suggestions].sort((a, b) => (b.score || 0) - (a.score || 0));
+
   return (
     <div className="step-detail p-4 bg-[--background-secondary] rounded-lg">
       <h3 className="fo-font-semibold fo-mb-3 fo-text-[--text-normal]">
@@ -238,35 +242,85 @@ export const Level2FolderStepDetail: React.FC<StepDetailProps> = ({
       </h3>
 
       <div className="fo-mb-3 fo-text-sm">
-        <div className="fo-text-green-600">状态: ✅ 二级目录已选择</div>
+        <div className="fo-text-green-600">状态: ✅ 文件夹建议已生成</div>
       </div>
 
-      <div className="fo-mb-3 fo-space-y-2">
-        <div className="fo-flex fo-items-center fo-gap-2">
-          <span className="fo-text-[--text-muted]">选择目录:</span>
-          <span className="fo-font-medium fo-text-[--interactive-accent]">{data?.level2Folder}</span>
+      <div className="fo-mb-3">
+        <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">
+          📁 请选择目标二级目录：
+        </div>
+        <div className="fo-space-y-2 fo-max-h-96 fo-overflow-y-auto">
+          {sortedSuggestions.map((suggestion: any, idx: number) => {
+            const isSelected = selectedFolder === suggestion.folder;
+            const scorePercent = Math.round((suggestion.score || 0) * 100);
+
+            return (
+              <div
+                key={idx}
+                onClick={() => setSelectedFolder(suggestion.folder)}
+                className={`fo-p-3 fo-border fo-rounded fo-cursor-pointer fo-transition-colors ${
+                  isSelected
+                    ? 'fo-border-[--interactive-accent] fo-bg-[--interactive-accent]/10'
+                    : 'fo-border-[--background-modifier-border] hover:fo-border-[--interactive-accent]/50 hover:fo-bg-[--background-modifier-hover]'
+                }`}
+              >
+                <div className="fo-flex fo-items-start fo-justify-between fo-gap-2">
+                  <div className="fo-flex-1">
+                    <div className="fo-flex fo-items-center fo-gap-2 fo-flex-wrap">
+                      <input
+                        type="radio"
+                        checked={isSelected}
+                        onChange={() => setSelectedFolder(suggestion.folder)}
+                        className="fo-cursor-pointer"
+                      />
+                      <span className="fo-font-medium fo-text-[--text-normal]">
+                        {suggestion.folder}
+                      </span>
+                      {idx === 0 && (
+                        <span className="fo-text-xs fo-px-2 fo-py-0.5 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded">
+                          推荐
+                        </span>
+                      )}
+                      {suggestion.exists && (
+                        <span className="fo-text-xs fo-px-2 fo-py-0.5 fo-bg-green-500 fo-text-white fo-rounded">
+                          已存在
+                        </span>
+                      )}
+                      {!suggestion.exists && (
+                        <span className="fo-text-xs fo-px-2 fo-py-0.5 fo-bg-gray-400 fo-text-white fo-rounded">
+                          新建
+                        </span>
+                      )}
+                    </div>
+                    {suggestion.reason && (
+                      <div className="fo-mt-1 fo-ml-6 fo-text-sm fo-text-[--text-muted]">
+                        💡 {suggestion.reason}
+                      </div>
+                    )}
+                  </div>
+                  <div className="fo-flex fo-items-center fo-gap-1">
+                    <div className="fo-text-sm fo-font-medium fo-text-[--text-accent]">
+                      {scorePercent}%
+                    </div>
+                    <div className="fo-w-16 fo-h-2 fo-bg-[--background-modifier-border] fo-rounded fo-overflow-hidden">
+                      <div
+                        className="fo-h-full fo-bg-[--interactive-accent]"
+                        style={{ width: `${scorePercent}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {data?.suggestions && data.suggestions.length > 1 && (
-        <details className="fo-mb-3">
-          <summary className="fo-text-xs fo-text-[--text-muted] fo-cursor-pointer">
-            查看其他建议 ({data.suggestions.length})
-          </summary>
-          <div className="fo-mt-2 fo-space-y-1 fo-pl-4">
-            {data.suggestions.map((s: any, idx: number) => (
-              <div key={idx} className="fo-text-sm fo-text-[--text-muted]">
-                • {s.folder} {s.score && `(${Math.round(s.score * 100)}%)`}
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
-
       <div className="fo-flex fo-gap-2">
         <button
-          onClick={onApply}
-          className="fo-px-4 fo-py-2 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded fo-font-medium"
+          onClick={() => onApply({ selectedFolder })}
+          disabled={!selectedFolder}
+          className="fo-px-4 fo-py-2 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded fo-font-medium disabled:fo-opacity-50 disabled:fo-cursor-not-allowed"
         >
           ✓ 应用并继续
         </button>
