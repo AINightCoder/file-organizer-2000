@@ -194,6 +194,18 @@ export const FormatStepDetail: React.FC<StepDetailProps> = ({
   const data = result?.data;
   const [showPreview, setShowPreview] = React.useState(false);
   const [customPrompt, setCustomPrompt] = React.useState('');
+  React.useEffect(() => {
+    const initial = (
+      (result && (result as any).data && (result as any).data.promptUsed) ||
+      (result && (result as any).data && (result as any).data.settingsPrompt) ||
+      (result && (result as any).data && (result as any).data.systemDefaultPrompt) ||
+      ''
+    ) as string;
+    if (initial && initial !== customPrompt) {
+      setCustomPrompt(initial);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result]);
 
   if (data?.noChange) {
     return (
@@ -252,20 +264,31 @@ export const FormatStepDetail: React.FC<StepDetailProps> = ({
         )}
       </div>
 
-      <details className="fo-mb-3">
-        <summary className="fo-text-xs fo-text-[--text-muted] fo-cursor-pointer">
-          自定义提示词重试
-        </summary>
-        <div className="fo-mt-2">
+            <div className="fo-mb-3">
+        <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">Custom prompt</div>
+        <div className="fo-w-full">
           <textarea
             value={customPrompt}
             onChange={(e) => setCustomPrompt(e.target.value)}
-            placeholder="输入自定义格式化提示词..."
-            className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded"
-            rows={3}
+            className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded fo-resize-y"
+            rows={5}
+            style={{ width: '100%', maxWidth: 'none', display: 'block', boxSizing: 'border-box', minWidth: 0 }}
           />
         </div>
-      </details>
+      </div>
+
+      <div className="fo-mb-3 fo-flex fo-justify-between fo-items-center">
+        <button
+          type="button"
+          onClick={() => {
+            const sys = (result?.data as any)?.systemDefaultPrompt || '';
+            setCustomPrompt(sys);
+          }}
+          className="fo-text-xs fo-text-[--text-muted] hover:fo-text-[--text-normal]"
+        >
+          Reset to system default
+        </button>
+      </div>
 
       <div className="fo-flex fo-gap-2">
         <button
@@ -275,8 +298,9 @@ export const FormatStepDetail: React.FC<StepDetailProps> = ({
           ✓ 应用并继续
         </button>
         <button
-          onClick={() => onRetry(customPrompt ? { prompt: customPrompt } : undefined)}
-          className="fo-px-4 fo-py-2 fo-bg-[--background-modifier-border] fo-text-[--text-normal] fo-rounded"
+          onClick={() => onRetry({ prompt: customPrompt.trim() })}
+          disabled={customPrompt.trim().length === 0}
+          className="fo-px-4 fo-py-2 fo-bg-[--background-modifier-border] fo-text-[--text-normal] fo-rounded disabled:fo-opacity-50 disabled:fo-cursor-not-allowed"
         >
           🔄 重新优化
         </button>
@@ -662,3 +686,4 @@ export const RoadmapStepDetail: React.FC<StepDetailProps> = ({
     </div>
   );
 };
+

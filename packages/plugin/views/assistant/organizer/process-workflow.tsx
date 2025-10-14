@@ -618,9 +618,26 @@ summary: "${metadata?.summary || ''}"
         case 0:
           result = await doRename(currentFile);
           break;
-        case 1:
+        case 1: {
+          // Ensure there is always a non-empty default prompt for optimize step
+          if (!((plugin.settings as any).optimizePrompt && (plugin.settings as any).optimizePrompt.trim())) {
+            (plugin.settings as any).optimizePrompt = DEFAULT_OPTIMIZE_PROMPT;
+          }
           result = await doFormatOptimize(currentFile);
+          // Augment result with prompt info for UI initialization
+          const __raw = (customParams[1]?.prompt ?? (plugin.settings as any).optimizePrompt ?? DEFAULT_OPTIMIZE_PROMPT);
+          const __used = (typeof __raw === 'string' ? __raw.trim() : '') || DEFAULT_OPTIMIZE_PROMPT;
+          result = {
+            ...result,
+            data: {
+              ...(result as any).data,
+              promptUsed: __used,
+              systemDefaultPrompt: DEFAULT_OPTIMIZE_PROMPT,
+              settingsPrompt: (plugin.settings as any).optimizePrompt || ''
+            }
+          } as StepResult;
           break;
+        }
         case 2:
           result = await doLevel2Classification(currentFile);
           break;
@@ -783,12 +800,37 @@ summary: "${metadata?.summary || ''}"
   // 重试当前步骤
   const handleRetry = React.useCallback(async (params?: any) => {
     if (params) {
-      setCustomParams(prev => ({ ...prev, [currentStepIndex]: params }));
+      let normalized = params;
+      if (currentStepIndex === 1 && typeof (params as any).prompt === 'string') {
+        const trimmed = ((params as any).prompt as string).trim();
+        normalized = trimmed.length > 0 ? { prompt: trimmed } : {};
+        // Persist optimize prompt as global default when retrying step 2
+        if (trimmed.length > 0) {
+          try {
+            (plugin.settings as any).optimizePrompt = trimmed;
+            await (plugin as any).saveSettings?.();
+            addLog('  Optimize prompt saved as global default.');
+            new Notice('Optimize prompt saved as default');
+          } catch (e: any) {
+            addLog(`  Failed to save optimize prompt: ${e?.message || e}`);
+            new Notice(`Failed to save default prompt: ${e?.message || e}`);
+          }
+        }
+      }
+      setCustomParams(prev => ({ ...prev, [currentStepIndex]: normalized }));
+      // Guard: prevent retry when step 2 prompt is empty after trimming
+      if (currentStepIndex === 1 && typeof (params as any).prompt === 'string') {
+        const __trim = ((params as any).prompt as string).trim();
+        if (__trim.length === 0) {
+          new Notice('Prompt cannot be empty');
+          return;
+        }
+      }
     }
     addLog(`🔄 重试步骤${currentStepIndex + 1}`);
     setWorkflowStatus('running');
     await executeStep(currentStepIndex);
-  }, [currentStepIndex, addLog, executeStep]);
+  }, [currentStepIndex, addLog, executeStep, plugin]);
 
   // 重置流程
   const handleReset = React.useCallback(() => {
