@@ -63,6 +63,14 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   const [currentContent, setCurrentContent] = React.useState<string>(initialContent);
   const [customParams, setCustomParams] = React.useState<Record<number, any>>({});
 
+  // Keep latest steps in a ref to avoid stale closures across step confirmations
+  const stepsRef = React.useRef<ProcessStep[]>(steps);
+  React.useEffect(() => {
+    stepsRef.current = steps;
+  }, [steps]);
+  // Keep the last explicitly confirmed Level-2 folder for step 4
+  const lastChosenLevel2Ref = React.useRef<string | null>(null);
+
   // 日志工具
   const addLog = React.useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -71,17 +79,25 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
 
   // 更新步骤状态
   const updateStepStatus = React.useCallback((stepIndex: number, status: StepStatus) => {
-    setSteps(prev => prev.map((step, idx) =>
-      idx === stepIndex ? { ...step, status } : step
-    ));
-  }, []);
+      setSteps(prev => {
+        const next = prev.map((step, idx) => (
+          idx === stepIndex ? { ...step, status } : step
+        ));
+        stepsRef.current = next;
+        return next;
+      });
+    }, []);
 
   // 更新步骤结果
   const updateStepResult = React.useCallback((stepIndex: number, result: any, error?: string) => {
-    setSteps(prev => prev.map((step, idx) =>
-      idx === stepIndex ? { ...step, result, error } : step
-    ));
-  }, []);
+      setSteps(prev => {
+        const next = prev.map((step, idx) => (
+          idx === stepIndex ? { ...step, result, error } : step
+        ));
+        stepsRef.current = next;
+        return next;
+      });
+    }, []);
 
   // 确保嵌套文件夹存在
   const ensureNestedFolders = React.useCallback(async (folderPath: string) => {
@@ -232,13 +248,14 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   const doLevel3Classification = React.useCallback(async (file: TFile): Promise<StepResult> => {
     try {
       // 获取步骤3的结果
-      const step2Result = steps[2]?.result;
+      const step2Result = stepsRef.current[2]?.result;
+      const __chosenL2 = (lastChosenLevel2Ref.current || (step2Result && step2Result.data && step2Result.data.level2Folder)) as string | undefined;
       if (!step2Result || step2Result.noChange) {
         addLog('  ℹ️ 步骤3未选择二级目录，跳过三级分类');
         return { success: true, updatedFile: file, data: { noChange: true } };
       }
 
-      const level2Folder = step2Result.data.level2Folder;
+      const level2Folder = __chosenL2 || step2Result.data.level2Folder;
       const content = await plugin.app.vault.read(file);
       const kbRoot = plugin.settings.knowledgeBaseRoot || '1.Area';
       const isUnderKB = level2Folder.startsWith(`${kbRoot}/`);
@@ -298,7 +315,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         const hintLines = level3Dirs
           .map(d => hints[d] ? `${d}: ${hints[d]}` : null)
           .filter(Boolean) as string[];
-        const hintBlock = hintLines.length > 0 ? `\n目录含义：\n- ${hintLines.join('\n- ')}` : '';
+        const hintBlock = hintLines.length > 0 ? `\n????:\n- ${hintLines.join('\\n- ')}` : '';
         const customInstruction = `仅从提供的 folders 列表中选择最合适的一个三级目录（候选均为 ${level2Folder} 的直接子目录）。不要建议新路径，也不要返回二级目录。确保仅返回 1 个结果。${hintBlock}`;
 
         const l3Suggestions = await plugin.aiService.generateFolder({
@@ -353,7 +370,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     } catch (error: any) {
       return { success: false, error: error.message };
     }
-  }, [plugin, addLog, steps, ensureNestedFolders]);
+  }, [plugin, addLog, ensureNestedFolders]);
 
   // 步骤5: 生成元数据
   const doGenerateMetadata = React.useCallback(async (file: TFile): Promise<StepResult> => {
@@ -361,7 +378,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       const content = await plugin.app.vault.read(file);
 
       // 获取步骤4的最终路径
-      const step3Result = steps[3]?.result;
+      const step3Result = stepsRef.current[3]?.result;
       const targetFolder = step3Result?.data?.finalFolder || file.parent?.path || '';
 
       let metadata: any = null;
@@ -455,7 +472,7 @@ summary: "${metadata?.summary || ''}"
     } catch (error: any) {
       return { success: false, error: error.message };
     }
-  }, [plugin, addLog, steps]);
+  }, [plugin, addLog]);
 
   // 步骤6: Roadmap关联
   const doRoadmapLink = React.useCallback(async (file: TFile): Promise<StepResult> => {
@@ -468,8 +485,8 @@ summary: "${metadata?.summary || ''}"
       const content = await plugin.app.vault.read(file);
 
       // 获取步骤4的结果
-      const step3Result = steps[3]?.result;
-      const step4Result = steps[4]?.result;
+      const step3Result = stepsRef.current[3]?.result;
+      const step4Result = stepsRef.current[4]?.result;
 
       let domainCate = '';
 
@@ -521,7 +538,9 @@ summary: "${metadata?.summary || ''}"
           if (roadmapPrompt.includes('${domain}')) {
             finalRoadmapPrompt = roadmapPrompt.replace(/\$\{domain\}/g, domain);
           } else {
-            finalRoadmapPrompt = `${roadmapPrompt}\n\n领域: ${domain}`;
+            finalRoadmapPrompt = `${roadmapPrompt}
+
+领域: ${domain}`;
           }
 
           let roadmapContent: string | null = null;
@@ -535,13 +554,17 @@ summary: "${metadata?.summary || ''}"
           }
 
           if (!roadmapFile) {
-            const header = `# ${domainCate} Roadmap\n\n`;
+            const header = `# ${domainCate} Roadmap
+
+`;
             roadmapFile = await plugin.app.vault.create(roadmapPath, header);
             addLog(`  ✅ 已创建: ${roadmapPath}`);
           }
         } catch (err: any) {
           addLog(`  ⚠️ Roadmap 生成失败: ${err.message}`);
-          const header = `# ${domainCate} Roadmap\n\n`;
+          const header = `# ${domainCate} Roadmap
+
+`;
           roadmapFile = await plugin.app.vault.create(roadmapPath, header);
         }
       }
@@ -562,7 +585,7 @@ summary: "${metadata?.summary || ''}"
             notePath: file.path,
           });
 
-          const lines = roadmapText.split('\n');
+          const lines = roadmapText.split('\\n');
           let idx = Math.max(0, Math.min(lines.length, (insert?.lineNumber ?? (lines.length + 1)) - 1));
 
           if (insert?.prependLines && insert.prependLines.length > 0) {
@@ -571,15 +594,19 @@ summary: "${metadata?.summary || ''}"
           }
 
           lines.splice(idx, 0, noteLink);
-          roadmapText = lines.join('\n');
+          roadmapText = lines.join('\\n');
           await plugin.app.vault.modify(roadmapFile, roadmapText);
           addLog(`  ✅ 已在模块内插入 Roadmap 链接（行 ${idx + 1}）`);
         } else {
           const fallbackHeader = '## 🗂 未归类/待整理';
           if (!roadmapText.includes(fallbackHeader)) {
-            roadmapText = `${roadmapText.trim()}\n\n${fallbackHeader}\n`;
+            roadmapText = `${roadmapText.trim()}
+
+${fallbackHeader}
+`;
           }
-          roadmapText = `${roadmapText}\n${noteLink}`;
+          roadmapText = `${roadmapText}
+${noteLink}`;
           await plugin.app.vault.modify(roadmapFile, roadmapText);
           addLog('  ✅ 已插入到"未归类/待整理"模块');
         }
@@ -587,7 +614,8 @@ summary: "${metadata?.summary || ''}"
         addLog(`  ✅ 已关联到Roadmap`);
       } catch (insertErr: any) {
         addLog(`  ⚠️ Roadmap 插入失败：${insertErr.message}`);
-        await plugin.app.vault.append(roadmapFile, `\n- [[${file.basename}]]`);
+        await plugin.app.vault.append(roadmapFile, `
+- [[${file.basename}]]`);
       }
 
       return {
@@ -601,7 +629,7 @@ summary: "${metadata?.summary || ''}"
     } catch (error: any) {
       return { success: false, error: error.message };
     }
-  }, [plugin, addLog, steps, ensureNestedFolders]);
+  }, [plugin, addLog, ensureNestedFolders]);
 
   // ============ 流程控制函数 ============
 
@@ -764,14 +792,8 @@ summary: "${metadata?.summary || ''}"
         }
 
         // 更新步骤结果，保存用户选择
-        updateStepResult(stepIndex, {
-          ...steps[stepIndex].result,
-          data: {
-            ...steps[stepIndex].result?.data,
-            level2Folder: selectedFolder,
-            userSelected: true
-          }
-        });
+        lastChosenLevel2Ref.current = selectedFolder;
+        updateStepResult(stepIndex, { ...steps[stepIndex].result, data: { ...steps[stepIndex].result?.data, level2Folder: selectedFolder, userSelected: true } });
       } catch (error: any) {
         addLog(`  ❌ 创建目录失败: ${error.message}`);
         new Notice(`创建目录失败: ${error.message}`);
@@ -1016,3 +1038,15 @@ summary: "${metadata?.summary || ''}"
     </div>
   );
 };
+
+
+
+
+
+
+
+
+
+
+
+
