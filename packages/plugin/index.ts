@@ -1044,7 +1044,8 @@ export default class FileOrganizer extends Plugin {
 
   async recommendName(
     content: string,
-    fileName: string
+    fileName: string,
+    prompt?: string
   ): Promise<Array<{ score: number; title: string; reason: string }>> {
     try {
       // 验证AIService是否已初始化
@@ -1059,7 +1060,7 @@ export default class FileOrganizer extends Plugin {
       const suggestedTitles = await this.aiService.generateTitle({
         content: trimmedContent,
         fileName,
-        customInstructions: this.settings.renameInstructions,
+        customInstructions: prompt || this.settings.renameInstructions,
         count: 3
       });
       

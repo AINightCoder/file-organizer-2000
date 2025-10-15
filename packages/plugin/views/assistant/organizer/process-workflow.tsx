@@ -1,7 +1,7 @@
 import * as React from "react";
 import { TFile, Notice } from "obsidian";
 import FileOrganizer from "../../../index";
-import { DEFAULT_ROADMAP_PROMPT, DEFAULT_OPTIMIZE_PROMPT } from "../../../prompts";
+import { DEFAULT_ROADMAP_PROMPT, DEFAULT_OPTIMIZE_PROMPT, DEFAULT_RENAME_INSTRUCTIONS } from "../../../prompts";
 import { logger } from "../../../services/logger";
 import {
   RenameStepDetail,
@@ -113,10 +113,13 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   // ============ 各步骤实现函数 ============
 
   // 步骤1: 文件重命名
-  const doRename = React.useCallback(async (file: TFile): Promise<StepResult> => {
+  const doRename = React.useCallback(async (file: TFile, promptOverride?: string): Promise<StepResult> => {
     try {
       const content = await plugin.app.vault.read(file);
-      const suggestions = await plugin.recommendName(content, file.basename);
+      // allow override prompt for rename via promptOverride or customParams[0]?.prompt
+      const renamePrompt = promptOverride ?? customParams[0]?.prompt ?? undefined;
+  // (temporary debug logs removed)
+      const suggestions = await plugin.recommendName(content, file.basename, renamePrompt);
 
       if (suggestions && suggestions.length > 0) {
         const newName = suggestions[0].title;
@@ -158,15 +161,15 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     } catch (error: any) {
       return { success: false, error: error.message };
     }
-  }, [plugin, addLog]);
+  }, [plugin, addLog, customParams]);
 
   // 步骤2: 内容格式优化
-  const doFormatOptimize = React.useCallback(async (file: TFile): Promise<StepResult> => {
+  const doFormatOptimize = React.useCallback(async (file: TFile, promptOverride?: string): Promise<StepResult> => {
     try {
       const content = await plugin.app.vault.read(file);
-      const prompt = customParams[1]?.prompt ||
-                     plugin.settings.optimizePrompt ||
-                     DEFAULT_OPTIMIZE_PROMPT;
+  const prompt = (promptOverride ?? customParams[1]?.prompt) ||
+         plugin.settings.optimizePrompt ||
+         DEFAULT_OPTIMIZE_PROMPT;
 
       if (!prompt || !prompt.trim()) {
         addLog('  ℹ️ 未配置格式化提示词，跳过');
@@ -634,26 +637,43 @@ ${noteLink}`;
   // ============ 流程控制函数 ============
 
   // 执行单个步骤
-  const executeStep = React.useCallback(async (stepIndex: number) => {
+  const executeStep = React.useCallback(async (stepIndex: number, overrides?: any) => {
     const stepName = INITIAL_STEPS[stepIndex].name;
     updateStepStatus(stepIndex, 'running');
     addLog(`📝 步骤${stepIndex + 1}: ${stepName}`);
+  // (temporary debug logs removed)
 
     try {
       let result: StepResult;
 
       switch (stepIndex) {
         case 0:
-          result = await doRename(currentFile);
+          result = await doRename(currentFile, overrides?.prompt);
+          // Augment rename result with prompt info for UI initialization (like step 1)
+          try {
+            const __raw0 = (customParams[0]?.prompt ?? (plugin.settings as any).renameInstructions ?? DEFAULT_RENAME_INSTRUCTIONS);
+            const __used0 = (typeof __raw0 === 'string' ? __raw0.trim() : '') || DEFAULT_RENAME_INSTRUCTIONS;
+            result = {
+              ...result,
+              data: {
+                ...(result as any).data,
+                promptUsed: __used0,
+                systemDefaultPrompt: DEFAULT_RENAME_INSTRUCTIONS,
+                settingsPrompt: (plugin.settings as any).renameInstructions || ''
+              }
+            } as StepResult;
+          } catch (e) {
+            // ignore augmentation errors, keep original result
+          }
           break;
         case 1: {
           // Ensure there is always a non-empty default prompt for optimize step
           if (!((plugin.settings as any).optimizePrompt && (plugin.settings as any).optimizePrompt.trim())) {
             (plugin.settings as any).optimizePrompt = DEFAULT_OPTIMIZE_PROMPT;
           }
-          result = await doFormatOptimize(currentFile);
+          result = await doFormatOptimize(currentFile, overrides?.prompt);
           // Augment result with prompt info for UI initialization
-          const __raw = (customParams[1]?.prompt ?? (plugin.settings as any).optimizePrompt ?? DEFAULT_OPTIMIZE_PROMPT);
+          const __raw = (overrides?.prompt ?? customParams[1]?.prompt ?? (plugin.settings as any).optimizePrompt ?? DEFAULT_OPTIMIZE_PROMPT);
           const __used = (typeof __raw === 'string' ? __raw.trim() : '') || DEFAULT_OPTIMIZE_PROMPT;
           result = {
             ...result,
@@ -822,6 +842,7 @@ ${noteLink}`;
   // 重试当前步骤
   const handleRetry = React.useCallback(async (params?: any) => {
     if (params) {
+  // (temporary debug logs removed)
       let normalized = params;
       if (currentStepIndex === 1 && typeof (params as any).prompt === 'string') {
         const trimmed = ((params as any).prompt as string).trim();
@@ -839,6 +860,27 @@ ${noteLink}`;
           }
         }
       }
+      // Support custom prompt for rename (step 0)
+      if (currentStepIndex === 0 && typeof (params as any).prompt === 'string') {
+        const trimmed0 = ((params as any).prompt as string).trim();
+  // (temporary debug logs removed)
+        if (trimmed0.length === 0) {
+          new Notice('Prompt cannot be empty');
+          return;
+        }
+        normalized = { prompt: trimmed0 };
+        // Persist rename prompt as global default (renameInstructions)
+        try {
+          (plugin.settings as any).renameInstructions = trimmed0;
+          await (plugin as any).saveSettings?.();
+          addLog('  Rename prompt saved as global default.');
+          new Notice('Rename prompt saved as default');
+        } catch (e: any) {
+          addLog(`  Failed to save rename prompt: ${e?.message || e}`);
+          new Notice(`Failed to save rename default prompt: ${e?.message || e}`);
+        }
+        addLog('  用户为重命名步骤提供了自定义 prompt');
+      }
       setCustomParams(prev => ({ ...prev, [currentStepIndex]: normalized }));
       // Guard: prevent retry when step 2 prompt is empty after trimming
       if (currentStepIndex === 1 && typeof (params as any).prompt === 'string') {
@@ -851,7 +893,9 @@ ${noteLink}`;
     }
     addLog(`🔄 重试步骤${currentStepIndex + 1}`);
     setWorkflowStatus('running');
-    await executeStep(currentStepIndex);
+    // Pass prompt override directly so the immediate retry uses the latest prompt
+    const overrides = (params && (params as any).prompt) ? { prompt: ((params as any).prompt as string).trim() } : undefined;
+    await executeStep(currentStepIndex, overrides);
   }, [currentStepIndex, addLog, executeStep, plugin]);
 
   // 重置流程
@@ -947,6 +991,7 @@ ${noteLink}`;
               stepName={steps[0].name}
               icon={steps[0].icon}
               result={steps[0].result}
+              plugin={plugin}
               onApply={handleApply}
               onRetry={handleRetry}
             />
@@ -957,6 +1002,7 @@ ${noteLink}`;
               stepName={steps[1].name}
               icon={steps[1].icon}
               result={steps[1].result}
+              plugin={plugin}
               onApply={handleApply}
               onRetry={handleRetry}
             />
@@ -967,6 +1013,7 @@ ${noteLink}`;
               stepName={steps[2].name}
               icon={steps[2].icon}
               result={steps[2].result}
+              plugin={plugin}
               onApply={handleApply}
               onRetry={handleRetry}
             />
@@ -977,6 +1024,7 @@ ${noteLink}`;
               stepName={steps[3].name}
               icon={steps[3].icon}
               result={steps[3].result}
+              plugin={plugin}
               onApply={handleApply}
               onRetry={handleRetry}
             />
@@ -987,6 +1035,7 @@ ${noteLink}`;
               stepName={steps[4].name}
               icon={steps[4].icon}
               result={steps[4].result}
+              plugin={plugin}
               onApply={handleApply}
               onRetry={handleRetry}
             />
@@ -997,6 +1046,7 @@ ${noteLink}`;
               stepName={steps[5].name}
               icon={steps[5].icon}
               result={steps[5].result}
+              plugin={plugin}
               onApply={handleApply}
               onRetry={handleRetry}
             />

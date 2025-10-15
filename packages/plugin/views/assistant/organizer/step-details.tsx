@@ -6,6 +6,7 @@ interface StepDetailProps {
   stepName: string;
   icon: string;
   result: any;
+  plugin?: any;
   onApply: (userChoice?: any) => void;
   onRetry: (params?: any) => void;
 }
@@ -16,6 +17,7 @@ export const RenameStepDetail: React.FC<StepDetailProps> = ({
   stepName,
   icon,
   result,
+  plugin,
   onApply,
   onRetry
 }) => {
@@ -23,6 +25,20 @@ export const RenameStepDetail: React.FC<StepDetailProps> = ({
   const [selectedName, setSelectedName] = React.useState<string>(data?.newName || '');
   const [customName, setCustomName] = React.useState<string>('');
   const [showCustomInput, setShowCustomInput] = React.useState(false);
+  const [customPrompt, setCustomPrompt] = React.useState<string>('');
+  React.useEffect(() => {
+    const initial = (
+      (result && (result as any).data && (result as any).data.promptUsed) ||
+      (result && (result as any).data && (result as any).data.settingsPrompt) ||
+  (plugin && (plugin.settings as any) && (plugin.settings as any).renameInstructions) ||
+      (result && (result as any).data && (result as any).data.systemDefaultPrompt) ||
+      ''
+    ) as string;
+    if (initial && initial !== customPrompt) {
+      setCustomPrompt(initial);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, plugin]);
 
   if (data?.noChange) {
     return (
@@ -172,11 +188,38 @@ export const RenameStepDetail: React.FC<StepDetailProps> = ({
           ✓ 应用并继续
         </button>
         <button
-          onClick={() => onRetry()}
+          onClick={() => onRetry(customPrompt && customPrompt.trim().length > 0 ? { prompt: customPrompt.trim() } : undefined)}
           className="fo-px-4 fo-py-2 fo-bg-[--background-modifier-border] fo-text-[--text-normal] fo-rounded"
         >
           🔄 重新生成
         </button>
+        <div className="fo-ml-2 fo-flex-1">
+          <div className="fo-mt-3 fo-mb-2 fo-text-sm fo-text-[--text-muted]">重命名 Prompt（可选）</div>
+          <textarea
+            value={customPrompt}
+            onChange={(e) => setCustomPrompt(e.target.value)}
+            placeholder="为重命名提供提示词，影响AI生成建议..."
+            className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded fo-resize-y"
+            rows={3}
+            style={{ width: '100%', maxWidth: 'none', display: 'block', boxSizing: 'border-box', minWidth: 0 }}
+          />
+          <div className="fo-mt-2 fo-flex fo-gap-2">
+            <button
+              onClick={() => onRetry({ prompt: customPrompt.trim() })}
+              disabled={customPrompt.trim().length === 0}
+              className="fo-px-3 fo-py-1 fo-bg-[--background-modifier-border] fo-text-[--text-normal] fo-rounded disabled:fo-opacity-50 disabled:fo-cursor-not-allowed"
+            >
+              🔁 使用自定义 prompt 重新生成
+            </button>
+            <button
+              type="button"
+              onClick={() => { setCustomPrompt(''); }}
+              className="fo-text-xs fo-text-[--text-muted] hover:fo-text-[--text-normal]"
+            >
+              清除 prompt
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
