@@ -358,11 +358,23 @@ export const Level2FolderStepDetail: React.FC<StepDetailProps> = ({
   stepName,
   icon,
   result,
+  plugin,
   onApply,
   onRetry
 }) => {
   const data = result?.data;
   const [selectedFolder, setSelectedFolder] = React.useState<string>(data?.level2Folder || '');
+  const [customPrompt, setCustomPrompt] = React.useState<string>('');
+
+  React.useEffect(() => {
+    const initial = (
+      (result && (result as any).data && (result as any).data.promptUsed) ||
+      (plugin && (plugin.settings as any) && (plugin.settings as any).customFolderInstructions) ||
+      ''
+    ) as string;
+    if (initial && initial !== customPrompt) setCustomPrompt(initial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, plugin]);
 
   if (data?.noChange) {
     return (
@@ -469,21 +481,33 @@ export const Level2FolderStepDetail: React.FC<StepDetailProps> = ({
         </div>
       </div>
 
-      <div className="fo-flex fo-gap-2">
-        <button
-          onClick={() => onApply({ selectedFolder })}
-          disabled={!selectedFolder}
-          className="fo-px-4 fo-py-2 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded fo-font-medium disabled:fo-opacity-50 disabled:fo-cursor-not-allowed"
-        >
-          ✓ 应用并继续
-        </button>
-        <button
-          onClick={() => onRetry()}
-          className="fo-px-4 fo-py-2 fo-bg-[--background-modifier-border] fo-text-[--text-normal] fo-rounded"
-        >
-          🔄 重新分类
-        </button>
-      </div>
+        <div className="fo-mb-3">
+          <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">自定义 Prompt（可选）</div>
+          <textarea
+            value={customPrompt}
+            onChange={(e) => setCustomPrompt(e.target.value)}
+            placeholder={plugin && (plugin.settings as any).customFolderInstructions ? "输入二级目录分类提示词..." : "可选：覆盖默认的二级目录分类指令"}
+            className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded fo-resize-y"
+            rows={4}
+            style={{ width: '100%', maxWidth: 'none', display: 'block', boxSizing: 'border-box', minWidth: 0 }}
+          />
+        </div>
+
+        <div className="fo-flex fo-gap-2">
+          <button
+            onClick={() => onApply({ selectedFolder, prompt: customPrompt && customPrompt.trim().length > 0 ? customPrompt.trim() : undefined })}
+            disabled={!selectedFolder}
+            className="fo-px-4 fo-py-2 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded fo-font-medium disabled:fo-opacity-50 disabled:fo-cursor-not-allowed"
+          >
+            ✓ 应用并继续
+          </button>
+          <button
+            onClick={() => onRetry(customPrompt && customPrompt.trim().length > 0 ? { prompt: customPrompt.trim() } : undefined)}
+            className="fo-px-4 fo-py-2 fo-bg-[--background-modifier-border] fo-text-[--text-normal] fo-rounded"
+          >
+            🔄 重新分类
+          </button>
+        </div>
     </div>
   );
 };

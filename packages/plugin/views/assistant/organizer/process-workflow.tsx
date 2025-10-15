@@ -204,10 +204,12 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   }, [plugin, addLog, customParams]);
 
   // 步骤3: 二级目录分类
-  const doLevel2Classification = React.useCallback(async (file: TFile): Promise<StepResult> => {
+  const doLevel2Classification = React.useCallback(async (file: TFile, promptOverride?: string): Promise<StepResult> => {
     try {
       const content = await plugin.app.vault.read(file);
-      const suggestions = await plugin.recommendFolders(content, file.basename);
+      // allow override prompt for level2 via promptOverride or customParams[2]?.prompt
+      const level2Prompt = promptOverride ?? customParams[2]?.prompt ?? undefined;
+      const suggestions = await plugin.recommendFolders(content, file.basename, level2Prompt);
 
       if (suggestions && suggestions.length > 0) {
         const normalizePath = (p: string) => (p.startsWith('/') ? p.substring(1) : p);
@@ -245,7 +247,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     } catch (error: any) {
       return { success: false, error: error.message };
     }
-  }, [plugin, addLog]);
+  }, [plugin, addLog, customParams]);
 
   // 步骤4: 三级目录分类
   const doLevel3Classification = React.useCallback(async (file: TFile): Promise<StepResult> => {
@@ -687,7 +689,23 @@ ${noteLink}`;
           break;
         }
         case 2:
-          result = await doLevel2Classification(currentFile);
+          result = await doLevel2Classification(currentFile, overrides?.prompt);
+          // Augment result with prompt info for UI initialization
+          try {
+            const __raw2 = (overrides?.prompt ?? customParams[2]?.prompt ?? (plugin.settings as any).customFolderInstructions ?? '');
+            const __used2 = (typeof __raw2 === 'string' ? __raw2.trim() : '') || '';
+            result = {
+              ...result,
+              data: {
+                ...(result as any).data,
+                promptUsed: __used2,
+                settingsPrompt: (plugin.settings as any).customFolderInstructions || ''
+              }
+            } as StepResult;
+          } catch (e) {
+            // ignore
+          }
+          break;
           break;
         case 3:
           result = await doLevel3Classification(currentFile);
@@ -814,6 +832,20 @@ ${noteLink}`;
         // 更新步骤结果，保存用户选择
         lastChosenLevel2Ref.current = selectedFolder;
         updateStepResult(stepIndex, { ...steps[stepIndex].result, data: { ...steps[stepIndex].result?.data, level2Folder: selectedFolder, userSelected: true } });
+        // 如果用户同时提供了 prompt，则持久化为默认二级目录提示
+        if (userChoice?.prompt && typeof userChoice.prompt === 'string') {
+          const p = (userChoice.prompt as string).trim();
+          if (p.length > 0) {
+            try {
+              (plugin.settings as any).customFolderInstructions = p;
+              await (plugin as any).saveSettings?.();
+              addLog('  Level2 prompt saved as global default (applied)');
+              new Notice('Level2 prompt saved as default');
+            } catch (e: any) {
+              addLog(`  Failed to save level2 prompt: ${e?.message || e}`);
+            }
+          }
+        }
       } catch (error: any) {
         addLog(`  ❌ 创建目录失败: ${error.message}`);
         new Notice(`创建目录失败: ${error.message}`);
@@ -860,8 +892,8 @@ ${noteLink}`;
           }
         }
       }
-      // Support custom prompt for rename (step 0)
-      if (currentStepIndex === 0 && typeof (params as any).prompt === 'string') {
+  // Support custom prompt for rename (step 0)
+  if (currentStepIndex === 0 && typeof (params as any).prompt === 'string') {
         const trimmed0 = ((params as any).prompt as string).trim();
   // (temporary debug logs removed)
         if (trimmed0.length === 0) {
@@ -880,6 +912,25 @@ ${noteLink}`;
           new Notice(`Failed to save rename default prompt: ${e?.message || e}`);
         }
         addLog('  用户为重命名步骤提供了自定义 prompt');
+      }
+      // Support custom prompt for level2 classification (step 2)
+      if (currentStepIndex === 2 && typeof (params as any).prompt === 'string') {
+        const trimmed2 = ((params as any).prompt as string).trim();
+        if (trimmed2.length === 0) {
+          new Notice('Prompt cannot be empty');
+          return;
+        }
+        // Persist as customFolderInstructions in settings
+        try {
+          (plugin.settings as any).customFolderInstructions = trimmed2;
+          await (plugin as any).saveSettings?.();
+          addLog('  Level2 prompt saved as global default.');
+          new Notice('Level2 prompt saved as default');
+        } catch (e: any) {
+          addLog(`  Failed to save level2 prompt: ${e?.message || e}`);
+          new Notice(`Failed to save default prompt: ${e?.message || e}`);
+        }
+        addLog('  用户为二级目录分类步骤提供了自定义 prompt');
       }
       setCustomParams(prev => ({ ...prev, [currentStepIndex]: normalized }));
       // Guard: prevent retry when step 2 prompt is empty after trimming

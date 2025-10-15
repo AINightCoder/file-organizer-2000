@@ -736,7 +736,8 @@ export default class FileOrganizer extends Plugin {
 
   async recommendFolders(
     content: string,
-    fileName: string
+    fileName: string,
+    userCustomInstructions?: string
   ): Promise<FolderSuggestion[]> {
     try {
       // 验证AIService是否已初始化
@@ -747,8 +748,8 @@ export default class FileOrganizer extends Plugin {
 
       // 仅关注候选文件夹的前两级（例如：1.Area/SEO），以缩小候选集合
       // 并指导模型只返回二级路径
-      const userCustom = this.settings.customFolderInstructions || "";
-      const customInstructions = `${userCustom}\n\n要求更新：\n- 仅从提供的 folders 列表中选择，并且只返回前两级路径（形如：根/二级，例如 1.Area/SEO）。\n- 如果没有合适的候选，也可以建议新建一个二级路径（根/二级），不要包含第三级或更深层级。`;
+  const userCustom = (userCustomInstructions ?? this.settings.customFolderInstructions) || "";
+  const customInstructions = `${userCustom}\n\n要求更新：\n- 仅从提供的 folders 列表中选择，并且只返回前两级路径（形如：根/二级，例如 1.Area/SEO）。\n- 如果没有合适的候选，也可以建议新建一个二级路径（根/二级），不要包含第三级或更深层级。`;
       const cutoff = this.settings.contentCutoffChars;
       const trimmedContent = content.slice(0, cutoff);
       const foldersAll = this.getAllUserFolders();
