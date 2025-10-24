@@ -134,6 +134,8 @@ export interface RoadmapInsertPosition {
   reasoning: string;         // 插入理由
   // 若需要在插入链接前创建结构，则在此返回需要预插入的行
   prependLines?: string[];   // 例如：["#### 3.[异步编程]", "- 知识点：事件循环与任务队列"]
+  error?: string;            // AI选择失败时的错误信息
+  warning?: string;          // 警告信息（例如使用了启发式回退）
 }
 
 export interface GenerateRoadmapOptions {
@@ -949,8 +951,18 @@ ${content.substring(0, 500)}...`;
       // 解析 Roadmap 结构（阶段/模块/要点）
       const structure = this.parseRoadmapStructure(roadmapContent);
 
+      // 添加调试日志：显示解析的结构信息
+      logger.info("Roadmap structure parsed", {
+        stagesCount: structure?.stages?.length || 0,
+        stages: structure?.stages?.map(s => ({
+          title: s.title,
+          modulesCount: s.modules.length,
+        })) || [],
+      });
+
       // 如果没有解析出结构，创建默认阶段/模块/知识点并在末尾插入
       if (!structure || structure.stages.length === 0) {
+        logger.warn("No valid Roadmap structure found, creating default structure");
         const lastLine = roadmapContent.split("\n").length + 1;
         const defaultStage = "## 🗂 未归类/待整理";
         const defaultModule = `#### 1.[${noteTitle}]`;
@@ -958,8 +970,9 @@ ${content.substring(0, 500)}...`;
         return {
           section: "未归类/待整理 / 新建模块",
           lineNumber: lastLine,
-          reasoning: "未检测到阶段结构，按参考流程新建阶段‘未归类/待整理’与模块并插入知识点与双链。",
+          reasoning: "未检测到阶段结构，按参考流程新建阶段'未归类/待整理'与模块并插入知识点与双链。",
           prependLines: [defaultStage, defaultModule, defaultKP],
+          warning: "Roadmap结构为空，已创建默认结构",
         };
       }
 
@@ -992,7 +1005,14 @@ ${content.substring(0, 500)}...`;
       }).join("\n");
 
       const selectionPrompt = `基于参考流程（docs/flow/参考流程.md），Roadmap 的插入层次为：阶段(初/中/高) → 模块 → 知识点。
-不得修改已有双链；若没有合适模块/知识点，需要在合适位置“新建模块”和/或“新建知识点”。
+不得修改已有双链；若没有合适模块/知识点，需要在合适位置"新建模块"和/或"新建知识点"。
+
+【重要规则】
+1. 每个笔记链接必须归属到某个"知识点"下（格式：- 知识点：xxx）
+2. 如果现有知识点都不合适，必须设置 shouldCreateKnowledgePoint=true 并提供新知识点标题
+3. 知识点应该是具体的、可定位的概念或技能点（如"Promise基础"、"异步函数用法"）
+4. 优先匹配已有知识点，确保相关内容聚合在一起
+5. 新建知识点时，标题应简洁明确，避免与已有知识点重复
 
 请根据笔记信息，从下列阶段/模块中选择最合适的位置，并判断是否需要新建模块/知识点（只做选择与是否新建判断，不输出行号）：
 
@@ -1004,18 +1024,21 @@ ${content.substring(0, 500)}...`;
 ${moduleDetails}
 
 输出 JSON 字段：
-- stageId: 必填，如 "S1"
+- stageId: 必填，如 "S1"（选择最合适的学习阶段）
 - moduleId: 可选，如 "M1.2"；若无合适模块则留空并置 shouldCreateModule=true
-- shouldCreateModule: 可选，布尔
-- moduleTitle: 可选，新模块标题（当 shouldCreateModule 为 true）
-- shouldCreateKnowledgePoint: 可选，布尔
-- knowledgePointTitle: 可选，新知识点标题（当 shouldCreateKnowledgePoint 为 true）
-- reasoning: 必填。`;
+- shouldCreateModule: 可选，布尔（是否需要新建模块）
+- moduleTitle: 可选，新模块标题（当 shouldCreateModule 为 true 时必填）
+- shouldCreateKnowledgePoint: 可选，布尔（是否需要新建知识点，优先匹配已有知识点）
+- knowledgePointTitle: 可选，新知识点标题（当 shouldCreateKnowledgePoint 为 true 时必填）
+- reasoning: 必填，说明选择理由和是否需要新建的原因。`;
 
       let chosenStageIdx = 0;
       let chosenModuleIdx: number | null = null;
       let reasoning = "";
       let selection: any = null;
+      let aiError: string | undefined = undefined;
+      let warning: string | undefined = undefined;
+
       try {
         const sel = await generateObject({
           model: this.model,
@@ -1044,13 +1067,23 @@ ${moduleDetails}
             }
           }
         }
-      } catch (err) {
-        // 如果模型选择失败，使用启发式：优先“未归类/待整理”，否则选择第一个阶段
+      } catch (err: any) {
+        // 如果模型选择失败，使用启发式：优先"未归类/待整理"，否则选择第一个阶段
+        const errorMsg = err?.message || String(err);
         logger.warn("LLM 阶段/模块选择失败，回退到启发式", err);
+
+        // 捕获详细错误信息
+        if (err instanceof z.ZodError) {
+          aiError = `Schema验证失败: ${err.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ')}`;
+        } else {
+          aiError = `AI调用失败: ${errorMsg}`;
+        }
+
         const idx = structure.stages.findIndex(s => /未归类|待整理/.test(s.title));
         chosenStageIdx = idx !== -1 ? idx : 0;
         chosenModuleIdx = null;
         reasoning = "模型选择失败，采用启发式：未归类/待整理 或 第一个阶段。";
+        warning = `使用了启发式回退，选择了"${structure.stages[chosenStageIdx].title}"阶段`;
       }
 
       // 依据本地解析结果计算具体插入行
@@ -1099,8 +1132,26 @@ ${moduleDetails}
         }
       }
 
-      logger.info("Insert position computed", { sectionDesc, lineNumber, reasoning, prependLines });
-      return { section: sectionDesc, lineNumber, reasoning, prependLines };
+      // 添加调试日志
+      logger.info("Insert position computed", {
+        sectionDesc,
+        lineNumber,
+        reasoning,
+        prependLines,
+        hasError: !!aiError,
+        hasWarning: !!warning,
+        stagesCount: structure.stages.length,
+        chosenStageTitle: chosenStage.title,
+      });
+
+      return {
+        section: sectionDesc,
+        lineNumber,
+        reasoning,
+        prependLines,
+        error: aiError,
+        warning: warning,
+      };
 
     } catch (e: any) {
       logger.error("Error finding roadmap insert position:", e);

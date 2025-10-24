@@ -590,7 +590,23 @@ summary: "${metadata?.summary || ''}"
             notePath: file.path,
           });
 
-          const lines = roadmapText.split('\\n');
+          // 显示错误和警告信息
+          if (insert?.error) {
+            addLog(`  ❌ AI选择错误: ${insert.error}`);
+          }
+          if (insert?.warning) {
+            addLog(`  ⚠️ 警告: ${insert.warning}`);
+          }
+
+          // 添加调试日志：显示AI选择的位置和理由
+          addLog(`  📍 AI选择位置: ${insert.section || '未知'}`);
+          addLog(`  💭 选择理由: ${insert.reasoning || '无'}`);
+          if (insert?.prependLines && insert.prependLines.length > 0) {
+            addLog(`  ✨ 将创建新结构: ${insert.prependLines.join(' → ')}`);
+          }
+          addLog(`  📝 插入行号: ${insert?.lineNumber || '未知'}`);
+
+          const lines = roadmapText.split('\n');
           let idx = Math.max(0, Math.min(lines.length, (insert?.lineNumber ?? (lines.length + 1)) - 1));
 
           if (insert?.prependLines && insert.prependLines.length > 0) {
@@ -599,21 +615,30 @@ summary: "${metadata?.summary || ''}"
           }
 
           lines.splice(idx, 0, noteLink);
-          roadmapText = lines.join('\\n');
+          roadmapText = lines.join('\n');
           await plugin.app.vault.modify(roadmapFile, roadmapText);
-          addLog(`  ✅ 已在模块内插入 Roadmap 链接（行 ${idx + 1}）`);
+          addLog(`  ✅ 已在知识点下成功插入链接（行 ${idx + 1}）`);
         } else {
+          // 改进的Fallback逻辑：使用结构化方式
           const fallbackHeader = '## 🗂 未归类/待整理';
+          const moduleHeader = `#### 1.[${noteTitle}]`;
+          const knowledgePoint = `- 知识点：${noteTitle}`;
+
           if (!roadmapText.includes(fallbackHeader)) {
             roadmapText = `${roadmapText.trim()}
 
 ${fallbackHeader}
 `;
           }
-          roadmapText = `${roadmapText}
-${noteLink}`;
+
+          // 在未归类区域内创建结构化内容（模块 → 知识点 → 链接）
+          roadmapText = `${roadmapText.trim()}
+${moduleHeader}
+${knowledgePoint}
+${noteLink}
+`;
           await plugin.app.vault.modify(roadmapFile, roadmapText);
-          addLog('  ✅ 已插入到"未归类/待整理"模块');
+          addLog('  ✅ 已插入到"未归类/待整理"模块（结构化）');
         }
 
         addLog(`  ✅ 已关联到Roadmap`);
