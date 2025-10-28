@@ -4,6 +4,7 @@ import FileOrganizer from "../../../index";
 import { debounce } from "lodash";
 
 import { SectionHeader } from "../section-header";
+import { RefreshButton } from "./components/refresh-button";
 import { EmptyState } from "./components/empty-state";
 import { ProcessWorkflow } from "./process-workflow";
 import { logMessage } from "../../../someUtils";
@@ -26,7 +27,7 @@ export const AssistantView: React.FC<AssistantViewProps> = ({
 }) => {
   const [activeFile, setActiveFile] = React.useState<TFile | null>(null);
   const [noteContent, setNoteContent] = React.useState<string>("");
-  // ...existing code...
+  const [refreshKey, setRefreshKey] = React.useState<number>(0);
   const [error, setError] = React.useState<string | null>(null);
   const [isLicenseValid, setIsLicenseValid] = React.useState(false);
   const [isConnected, setIsConnected] = React.useState(true);
@@ -88,7 +89,12 @@ export const AssistantView: React.FC<AssistantViewProps> = ({
     };
   }, [updateActiveFile, plugin.app.workspace]);
 
-  // Refresh button removed: use updateActiveFile() directly when needed
+  const refreshContext = React.useCallback(() => {
+    console.log("refreshContext called");
+    setRefreshKey(prevKey => prevKey + 1);
+    setError(null);
+    updateActiveFile();
+  }, [updateActiveFile]);
 
   const renderSection = React.useCallback(
     (component: React.ReactNode, errorMessage: string) => {
@@ -128,7 +134,9 @@ export const AssistantView: React.FC<AssistantViewProps> = ({
   if (error) {
     return (
       <EmptyState
-        message={`Error: ${error}.`}
+        message={`Error: ${error}. Click refresh to try again.`}
+        showRefresh={true}
+        onRefresh={refreshContext}
       />
     );
   }
@@ -150,7 +158,9 @@ export const AssistantView: React.FC<AssistantViewProps> = ({
   if (!noteContent.trim()) {
     return (
       <EmptyState
-        message="This file is empty. Add some content to see AI suggestions."
+        message="This file is empty. Add some content and click refresh to see AI suggestions."
+        showRefresh={true}
+        onRefresh={refreshContext}
         showDelete={true}
         onDelete={handleDelete}
       />
@@ -160,6 +170,7 @@ export const AssistantView: React.FC<AssistantViewProps> = ({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex gap-3 items-center ">
+        <RefreshButton onRefresh={refreshContext} />
         <div className="text-accent">{activeFile.basename}</div>
       </div>
 

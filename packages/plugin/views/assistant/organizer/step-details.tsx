@@ -237,7 +237,6 @@ export const FormatStepDetail: React.FC<StepDetailProps> = ({
   const data = result?.data;
   const [showPreview, setShowPreview] = React.useState(false);
   const [customPrompt, setCustomPrompt] = React.useState('');
-  const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   React.useEffect(() => {
     const initial = (
       (result && (result as any).data && (result as any).data.promptUsed) ||
@@ -309,32 +308,30 @@ export const FormatStepDetail: React.FC<StepDetailProps> = ({
       </div>
 
             <div className="fo-mb-3">
-              <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', whiteSpace: 'nowrap', width: '100%'}}>
-                <div style={{flex: 1, minWidth: 0}} className="fo-text-sm fo-text-[--text-muted]">Custom prompt</div>
-                <button
-                  type="button"
-                  aria-label="Reset to system default"
-                  onClick={() => {
-                    const sys = (result?.data as any)?.systemDefaultPrompt || '';
-                    setCustomPrompt(sys);
-                    setTimeout(() => textareaRef.current?.focus(), 0);
-                  }}
-                  className="fo-text-xs fo-text-[--text-muted] hover:fo-text-[--text-normal] fo-shrink-0"
-                >
-                  Reset
-                </button>
-              </div>
-              <div className="fo-w-full">
-                <textarea
-                  ref={textareaRef}
-                  value={customPrompt}
-                  onChange={(e) => setCustomPrompt(e.target.value)}
-                  className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded fo-resize-y"
-                  rows={5}
-                  style={{ width: '100%', maxWidth: 'none', display: 'block', boxSizing: 'border-box', minWidth: 0 }}
-                />
-              </div>
-            </div>
+        <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">Custom prompt</div>
+        <div className="fo-w-full">
+          <textarea
+            value={customPrompt}
+            onChange={(e) => setCustomPrompt(e.target.value)}
+            className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded fo-resize-y"
+            rows={5}
+            style={{ width: '100%', maxWidth: 'none', display: 'block', boxSizing: 'border-box', minWidth: 0 }}
+          />
+        </div>
+      </div>
+
+      <div className="fo-mb-3 fo-flex fo-justify-between fo-items-center">
+        <button
+          type="button"
+          onClick={() => {
+            const sys = (result?.data as any)?.systemDefaultPrompt || '';
+            setCustomPrompt(sys);
+          }}
+          className="fo-text-xs fo-text-[--text-muted] hover:fo-text-[--text-normal]"
+        >
+          Reset to system default
+        </button>
+      </div>
 
       <div className="fo-flex fo-gap-2">
         <button
