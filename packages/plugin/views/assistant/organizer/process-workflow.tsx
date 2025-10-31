@@ -70,6 +70,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   }, [steps]);
   // Keep the last explicitly confirmed Level-2 folder for step 4
   const lastChosenLevel2Ref = React.useRef<string | null>(null);
+  const lastChosenLevel3Ref = React.useRef<string | null>(null);
 
   // 日志工具
   const addLog = React.useCallback((message: string) => {
@@ -250,9 +251,8 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   }, [plugin, addLog, customParams]);
 
   // 步骤4: 三级目录分类
-  const doLevel3Classification = React.useCallback(async (file: TFile): Promise<StepResult> => {
+  const doLevel3Classification = React.useCallback(async (file: TFile, promptOverride?: string): Promise<StepResult> => {
     try {
-      // 获取步骤3的结果
       const step2Result = stepsRef.current[2]?.result;
       const __chosenL2 = (lastChosenLevel2Ref.current || (step2Result && step2Result.data && step2Result.data.level2Folder)) as string | undefined;
       if (!step2Result || step2Result.noChange) {
@@ -265,21 +265,6 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       const kbRoot = plugin.settings.knowledgeBaseRoot || '1.Area';
       const isUnderKB = level2Folder.startsWith(`${kbRoot}/`);
 
-      if (!isUnderKB) {
-        // 不在知识库根目录下，直接移动到二级目录
-        const newPath = `${level2Folder}/${file.name}`;
-        await plugin.app.fileManager.renameFile(file, newPath);
-        const movedFile = plugin.app.vault.getAbstractFileByPath(newPath) as TFile;
-        addLog(`  ✅ 已移动到: ${level2Folder}`);
-
-        return {
-          success: true,
-          updatedFile: movedFile,
-          data: { finalFolder: level2Folder }
-        };
-      }
-
-      // 在知识库下，进行三级目录选择
       const roadmapName = plugin.settings.roadmapFolder || '01.Roadmap';
       const configured = (plugin.settings as any).level3Dirs && (plugin.settings as any).level3Dirs.length > 0
         ? (plugin.settings as any).level3Dirs.map((d: string) => d === '01.Roadmap' ? roadmapName : d)
@@ -289,7 +274,6 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       const standardCandidates = level3Dirs.map(d => `${level2Folder}/${d}`);
       let level3Candidates = [...standardCandidates];
 
-      // 是否包含已有的三级目录
       if ((plugin.settings as any).includeExistingLevel3Dirs) {
         try {
           const l2FolderAbs = plugin.app.vault.getAbstractFileByPath(level2Folder) as any;
@@ -300,9 +284,49 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         } catch { }
       }
 
-      let finalFolder = level2Folder;
+      const settingsPromptRaw = (plugin.settings as any).level3CustomInstructions;
+      const settingsPrompt = typeof settingsPromptRaw === 'string' ? settingsPromptRaw : '';
+      const storedPrompt = typeof customParams[3]?.prompt === 'string' ? customParams[3].prompt : '';
+      const overridePromptValue = typeof promptOverride === 'string' ? promptOverride : '';
+      const promptCandidate = [overridePromptValue, storedPrompt, settingsPrompt].find(
+        (p) => typeof p === 'string' && p.trim().length > 0
+      );
+      const promptUsed = promptCandidate ? promptCandidate.trim() : '';
 
-      // 急切创建标准三级目录
+      const hints = (plugin.settings as any).level3DirHints || {};
+      const hintLines = level3Dirs
+        .map(d => hints[d] ? `${d}: ${hints[d]}` : null)
+        .filter(Boolean) as string[];
+      const hintBlock = hintLines.length > 0 ? `
+提示：
+- ${hintLines.join('\n- ')}` : '';
+      const defaultInstruction = `仅从 folders 提供的路径中（均为 ${level2Folder} 的直接子目录）选择最合适的一个第三级目录，不要提出新的路径，也不要返回二级目录。确保只返回 1 个结果。${hintBlock}`;
+      const instructionToUse = promptUsed.length > 0 ? promptUsed : defaultInstruction;
+
+      if (!isUnderKB) {
+        const newPath = `${level2Folder}/${file.name}`;
+        await plugin.app.fileManager.renameFile(file, newPath);
+        const movedFile = plugin.app.vault.getAbstractFileByPath(newPath) as TFile;
+        addLog(`  ✅ 已移动到: ${level2Folder}`);
+        lastChosenLevel3Ref.current = level2Folder;
+
+        return {
+          success: true,
+          updatedFile: movedFile,
+          data: {
+            finalFolder: level2Folder,
+            level3Candidates,
+            suggestions: [],
+            promptUsed: instructionToUse,
+            systemDefaultPrompt: defaultInstruction,
+            settingsPrompt
+          }
+        };
+      }
+
+      let finalFolder = level2Folder;
+      let structuredSuggestions: any[] = [];
+
       if ((plugin.settings as any).eagerCreateLevel3Dirs) {
         for (const p of standardCandidates) {
           if (!plugin.app.vault.getAbstractFileByPath(p)) {
@@ -312,28 +336,25 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         }
       }
 
-      // AI选择三级目录
       try {
         const cutoff = plugin.settings.contentCutoffChars || 1000;
         const trimmed = content.slice(0, cutoff);
-        const hints = (plugin.settings as any).level3DirHints || {};
-        const hintLines = level3Dirs
-          .map(d => hints[d] ? `${d}: ${hints[d]}` : null)
-          .filter(Boolean) as string[];
-        const hintBlock = hintLines.length > 0 ? `\n????:\n- ${hintLines.join('\\n- ')}` : '';
-        const customInstruction = `仅从提供的 folders 列表中选择最合适的一个三级目录（候选均为 ${level2Folder} 的直接子目录）。不要建议新路径，也不要返回二级目录。确保仅返回 1 个结果。${hintBlock}`;
-
+        const suggestionCount = Math.max(1, Math.min(3, level3Candidates.length || 1));
         const l3Suggestions = await plugin.aiService.generateFolder({
           content: trimmed,
           fileName: file.basename,
           folders: level3Candidates,
-          customInstructions: customInstruction,
-          count: 1,
+          customInstructions: instructionToUse,
+          count: suggestionCount,
         });
 
-        if (l3Suggestions && l3Suggestions.length > 0) {
-          const chosenL3 = l3Suggestions.sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0))[0];
-          finalFolder = level3Candidates.includes(chosenL3.folder) ? chosenL3.folder : finalFolder;
+        if (Array.isArray(l3Suggestions) && l3Suggestions.length > 0) {
+          structuredSuggestions = [...l3Suggestions].sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0));
+          const chosenL3 = structuredSuggestions[0];
+          const candidateFolder = chosenL3?.folder;
+          if (candidateFolder && level3Candidates.includes(candidateFolder)) {
+            finalFolder = candidateFolder;
+          }
           addLog(`  选择三级目录: ${finalFolder}`);
         } else {
           const fallbackName = (plugin.settings as any).fallbackLevel3Dir || '02.What';
@@ -349,7 +370,22 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         addLog(`  ⚠️ 三级目录选择失败：${e.message}，将落入二级目录`);
       }
 
-      // 懒创建最终目录
+      if (structuredSuggestions.length === 0) {
+        const exists = (candidate: string) => !!plugin.app.vault.getAbstractFileByPath(candidate);
+        structuredSuggestions = level3Candidates.map(folder => ({
+          folder,
+          score: finalFolder === folder ? 1 : 0,
+          exists: exists(folder),
+          reason: undefined,
+          isNewFolder: false
+        }));
+      } else {
+        structuredSuggestions = structuredSuggestions.map((item: any) => ({
+          ...item,
+          exists: !!plugin.app.vault.getAbstractFileByPath(item.folder)
+        }));
+      }
+
       if (!(plugin.settings as any).eagerCreateLevel3Dirs) {
         if (!plugin.app.vault.getAbstractFileByPath(finalFolder)) {
           await ensureNestedFolders(finalFolder);
@@ -357,11 +393,11 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         }
       }
 
-      // 移动文件到最终目录
       const newPath = `${finalFolder}/${file.name}`;
       await plugin.app.fileManager.renameFile(file, newPath);
       const movedFile = plugin.app.vault.getAbstractFileByPath(newPath) as TFile;
       addLog(`  ✅ 已移动到: ${finalFolder}`);
+      lastChosenLevel3Ref.current = finalFolder;
 
       return {
         success: true,
@@ -369,15 +405,18 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         data: {
           finalFolder,
           level3Candidates,
-          suggestions: []
+          suggestions: structuredSuggestions,
+          promptUsed: instructionToUse,
+          systemDefaultPrompt: defaultInstruction,
+          settingsPrompt
         }
       };
     } catch (error: any) {
       return { success: false, error: error.message };
     }
-  }, [plugin, addLog, ensureNestedFolders]);
+  }, [plugin, addLog, ensureNestedFolders, customParams]);
 
-  // 步骤5: 生成元数据
+// 步骤5: 生成元数据
   const doGenerateMetadata = React.useCallback(async (file: TFile): Promise<StepResult> => {
     try {
       const content = await plugin.app.vault.read(file);
@@ -733,7 +772,21 @@ ${noteLink}
           break;
           break;
         case 3:
-          result = await doLevel3Classification(currentFile);
+          result = await doLevel3Classification(currentFile, overrides?.prompt);
+          try {
+            const __raw3 = (overrides?.prompt ?? customParams[3]?.prompt ?? (plugin.settings as any).level3CustomInstructions ?? '');
+            const __used3 = (typeof __raw3 === 'string' ? __raw3.trim() : '') || '';
+            result = {
+              ...result,
+              data: {
+                ...(result as any).data,
+                promptUsed: (result as any).data?.promptUsed ?? __used3,
+                settingsPrompt: (plugin.settings as any).level3CustomInstructions || ''
+              }
+            } as StepResult;
+          } catch {
+            // ignore prompt augmentation failure
+          }
           break;
         case 4:
           result = await doGenerateMetadata(currentFile);
@@ -878,6 +931,63 @@ ${noteLink}
       }
     }
 
+    if (stepIndex === 3 && userChoice?.selectedFolder) {
+      const selectedFolder = (userChoice.selectedFolder as string).trim();
+      const trimmedPrompt = typeof userChoice?.prompt === 'string' ? (userChoice.prompt as string).trim() : '';
+      if (!selectedFolder) {
+        new Notice('⚠️ 请选择有效的三级目录路径');
+        return;
+      }
+      addLog(`✅ 用户选择三级目录: ${selectedFolder}`);
+
+      try {
+        if (!plugin.app.vault.getAbstractFileByPath(selectedFolder)) {
+          await ensureNestedFolders(selectedFolder);
+          addLog(`  ✅ 创建三级目录: ${selectedFolder}`);
+        }
+
+        const targetPath = `${selectedFolder}/${currentFile.name}`;
+        if (currentFile.path !== targetPath) {
+          await plugin.app.fileManager.renameFile(currentFile, targetPath);
+          const movedFile = plugin.app.vault.getAbstractFileByPath(targetPath) as TFile;
+          if (movedFile) {
+            setCurrentFile(movedFile);
+            const newContent = await plugin.app.vault.read(movedFile);
+            setCurrentContent(newContent);
+          }
+          addLog(`  ✅ 文件移动至: ${selectedFolder}`);
+        }
+
+        lastChosenLevel3Ref.current = selectedFolder;
+
+        const prevResult = steps[stepIndex].result || { success: true };
+        updateStepResult(stepIndex, {
+          ...prevResult,
+          updatedFile: plugin.app.vault.getAbstractFileByPath(targetPath) as TFile,
+          data: {
+            ...(prevResult.data || {}),
+            finalFolder: selectedFolder,
+            userSelected: true,
+            ...(trimmedPrompt ? { promptUsed: trimmedPrompt } : {})
+          }
+        });
+
+        if (trimmedPrompt.length > 0) {
+          try {
+            (plugin.settings as any).level3CustomInstructions = trimmedPrompt;
+            await (plugin as any).saveSettings?.();
+            addLog('  Level3 prompt saved as global default (applied)');
+          } catch (e: any) {
+            addLog(`  Failed to save level3 prompt: ${e?.message || e}`);
+          }
+        }
+      } catch (error: any) {
+        addLog(`  ❌ 处理三级目录失败: ${error.message}`);
+        new Notice(`处理三级目录失败: ${error.message}`);
+        return;
+      }
+    }
+
     updateStepStatus(stepIndex, 'completed');
     addLog(`✅ 已应用步骤${stepIndex + 1}`);
     const __nameForLog = stepIndex === 0
@@ -956,6 +1066,21 @@ ${noteLink}
           new Notice(`Failed to save default prompt: ${e?.message || e}`);
         }
         addLog('  用户为二级目录分类步骤提供了自定义 prompt');
+      }
+      if (currentStepIndex === 3 && typeof (params as any).prompt === 'string') {
+        const trimmed3 = ((params as any).prompt as string).trim();
+        normalized = trimmed3.length > 0 ? { prompt: trimmed3 } : {};
+        if (trimmed3.length > 0) {
+          try {
+            (plugin.settings as any).level3CustomInstructions = trimmed3;
+            await (plugin as any).saveSettings?.();
+            addLog('  Level3 prompt saved as global default.');
+            new Notice('Level3 prompt saved as default');
+          } catch (e: any) {
+            addLog(`  Failed to save level3 prompt: ${e?.message || e}`);
+            new Notice(`Failed to save default prompt: ${e?.message || e}`);
+          }
+        }
       }
       setCustomParams(prev => ({ ...prev, [currentStepIndex]: normalized }));
       // Guard: prevent retry when step 2 prompt is empty after trimming

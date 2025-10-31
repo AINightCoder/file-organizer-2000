@@ -518,10 +518,32 @@ export const Level3FolderStepDetail: React.FC<StepDetailProps> = ({
   stepName,
   icon,
   result,
+  plugin,
   onApply,
   onRetry
 }) => {
   const data = result?.data;
+  const [selectedFolder, setSelectedFolder] = React.useState<string>(data?.finalFolder || '');
+  const [customPrompt, setCustomPrompt] = React.useState<string>('');
+
+  React.useEffect(() => {
+    if (data?.finalFolder && data.finalFolder !== selectedFolder) {
+      setSelectedFolder(data.finalFolder);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.finalFolder]);
+
+  React.useEffect(() => {
+    const initial = (
+      (result && (result as any).data && (result as any).data.promptUsed) ||
+      (result && (result as any).data && (result as any).data.settingsPrompt) ||
+      ''
+    ) as string;
+    if (initial && initial !== customPrompt) {
+      setCustomPrompt(initial);
+    }
+    // eslint-disable-next-line react-hooks-exhaustive-deps
+  }, [result]);
 
   if (data?.noChange) {
     return (
@@ -544,6 +566,49 @@ export const Level3FolderStepDetail: React.FC<StepDetailProps> = ({
     );
   }
 
+  const suggestions = React.useMemo(() => {
+    if (Array.isArray(data?.suggestions) && data.suggestions.length > 0) {
+      return data.suggestions.map((suggestion: any) => ({
+        folder: suggestion.folder,
+        score: suggestion.score,
+        exists: typeof suggestion.exists === 'boolean' ? suggestion.exists : undefined,
+        reason: suggestion.reason,
+        isNewFolder: suggestion.isNewFolder
+      }));
+    }
+
+    if (Array.isArray(data?.level3Candidates) && data.level3Candidates.length > 0) {
+      return data.level3Candidates.map((folder: string) => ({
+        folder,
+        score: data?.finalFolder === folder ? 1 : 0,
+        exists: undefined,
+        reason: undefined,
+        isNewFolder: false
+      }));
+    }
+
+    return [];
+  }, [data]);
+
+  const sortedSuggestions = React.useMemo(
+    () => [...suggestions].sort((a, b) => ((b.score ?? 0) - (a.score ?? 0))),
+    [suggestions]
+  );
+
+  const handleApplyClick = () => {
+    if (!selectedFolder) return;
+    const trimmed = customPrompt.trim();
+    onApply({
+      selectedFolder,
+      prompt: trimmed.length > 0 ? trimmed : undefined
+    });
+  };
+
+  const handleRetryClick = () => {
+    const trimmed = customPrompt.trim();
+    onRetry(trimmed.length > 0 ? { prompt: trimmed } : undefined);
+  };
+
   return (
     <div className="step-detail p-4 bg-[--background-secondary] rounded-lg">
       <h3 className="fo-font-semibold fo-mb-3 fo-text-[--text-normal]">
@@ -551,17 +616,104 @@ export const Level3FolderStepDetail: React.FC<StepDetailProps> = ({
       </h3>
 
       <div className="fo-mb-3 fo-text-sm">
-        <div className="fo-text-green-600">状态: ✅ 文件已移动到最终目录</div>
+        <div className="fo-text-green-600">状态: ✅ AI 已提供第三级分类建议</div>
       </div>
 
       <div className="fo-mb-3 fo-space-y-2">
         <div className="fo-flex fo-items-center fo-gap-2">
           <span className="fo-text-[--text-muted]">最终目录:</span>
-          <span className="fo-font-medium fo-text-[--interactive-accent]">{data?.finalFolder}</span>
+          <span className="fo-font-medium fo-text-[--interactive-accent]">
+            {selectedFolder || data?.finalFolder || '暂未选择'}
+          </span>
         </div>
       </div>
 
-      {data?.level3Candidates && data.level3Candidates.length > 0 && (
+      <div className="fo-mb-3">
+        <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">🗂️ 请选择目标目录:</div>
+        {sortedSuggestions.length > 0 ? (
+          <div className="fo-space-y-2 fo-max-h-96 fo-overflow-y-auto">
+            {sortedSuggestions.map((suggestion: any, idx: number) => {
+              const isSelected = selectedFolder === suggestion.folder;
+              const rawScore = typeof suggestion.score === 'number' ? suggestion.score : undefined;
+              const clampedScore = rawScore !== undefined ? Math.max(0, Math.min(rawScore, 1)) : undefined;
+              const scorePercent = clampedScore !== undefined ? Math.round(clampedScore * 100) : undefined;
+
+              return (
+                <div
+                  key={`${suggestion.folder}-${idx}`}
+                  onClick={() => setSelectedFolder(suggestion.folder)}
+                  className={`fo-p-3 fo-border fo-rounded fo-cursor-pointer fo-transition-colors ${
+                    isSelected
+                      ? 'fo-border-[--interactive-accent] fo-bg-[--interactive-accent]/10'
+                      : 'fo-border-[--background-modifier-border] hover:fo-border-[--interactive-accent]/50 hover:fo-bg-[--background-modifier-hover]'
+                  }`}
+                >
+                  <div className="fo-flex fo-items-start fo-justify-between fo-gap-2">
+                    <div className="fo-flex-1">
+                      <div className="fo-flex fo-items-center fo-gap-2 fo-flex-wrap">
+                        <input
+                          type="radio"
+                          checked={isSelected}
+                          onChange={() => setSelectedFolder(suggestion.folder)}
+                          className="fo-cursor-pointer"
+                        />
+                        <span className="fo-font-medium fo-text-[--text-normal]">
+                          {suggestion.folder}
+                        </span>
+                        {idx === 0 && (
+                          <span className="fo-text-xs fo-px-2 fo-py-0.5 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded">
+                            推荐
+                          </span>
+                        )}
+                        {typeof suggestion.exists === 'boolean' && (
+                          <span
+                            className={`fo-text-xs fo-px-2 fo-py-0.5 fo-rounded ${
+                              suggestion.exists
+                                ? 'fo-bg-green-500 fo-text-white'
+                                : 'fo-bg-gray-400 fo-text-white'
+                            }`}
+                          >
+                            {suggestion.exists ? '已存在' : '新建'}
+                          </span>
+                        )}
+                        {suggestion.isNewFolder && typeof suggestion.exists !== 'boolean' && (
+                          <span className="fo-text-xs fo-px-2 fo-py-0.5 fo-bg-gray-400 fo-text-white fo-rounded">
+                            新建
+                          </span>
+                        )}
+                      </div>
+                      {suggestion.reason && (
+                        <div className="fo-mt-1 fo-ml-6 fo-text-sm fo-text-[--text-muted]">
+                          理由: {suggestion.reason}
+                        </div>
+                      )}
+                    </div>
+                    {scorePercent !== undefined && (
+                      <div className="fo-flex fo-items-center fo-gap-1">
+                        <div className="fo-text-sm fo-font-medium fo-text-[--text-accent]">
+                          {scorePercent}%
+                        </div>
+                        <div className="fo-w-16 fo-h-2 fo-bg-[--background-modifier-border] fo-rounded fo-overflow-hidden">
+                          <div
+                            className="fo-h-full fo-bg-[--interactive-accent]"
+                            style={{ width: `${scorePercent}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="fo-text-sm fo-text-[--text-muted] fo-italic">
+            暂无候选目录，请调整 Prompt 后重试。
+          </div>
+        )}
+      </div>
+
+      {Array.isArray(data?.level3Candidates) && data.level3Candidates.length > 0 && sortedSuggestions.length === 0 && (
         <details className="fo-mb-3">
           <summary className="fo-text-xs fo-text-[--text-muted] fo-cursor-pointer">
             查看候选目录 ({data.level3Candidates.length})
@@ -569,32 +721,43 @@ export const Level3FolderStepDetail: React.FC<StepDetailProps> = ({
           <div className="fo-mt-2 fo-space-y-1 fo-pl-4 fo-max-h-32 fo-overflow-y-auto">
             {data.level3Candidates.map((folder: string, idx: number) => (
               <div key={idx} className="fo-text-sm fo-text-[--text-muted]">
-                • {folder}
+                ▸ {folder}
               </div>
             ))}
           </div>
         </details>
       )}
 
+      <div className="fo-mb-3">
+        <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">🛠 Prompt（可选）</div>
+        <textarea
+          value={customPrompt}
+          onChange={(e) => setCustomPrompt(e.target.value)}
+          placeholder={data?.systemDefaultPrompt ? '覆盖默认提示词以重新分类…' : '填写提示词帮助模型更好分类…'}
+          className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded fo-resize-y"
+          rows={4}
+          style={{ width: '100%', maxWidth: 'none', display: 'block', boxSizing: 'border-box', minWidth: 0 }}
+        />
+      </div>
+
       <div className="fo-flex fo-gap-2">
         <button
-          onClick={onApply}
-          className="fo-px-4 fo-py-2 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded fo-font-medium"
+          onClick={handleApplyClick}
+          disabled={!selectedFolder}
+          className="fo-px-4 fo-py-2 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded fo-font-medium disabled:fo-opacity-50 disabled:fo-cursor-not-allowed"
         >
           ✓ 应用并继续
         </button>
         <button
-          onClick={() => onRetry()}
+          onClick={handleRetryClick}
           className="fo-px-4 fo-py-2 fo-bg-[--background-modifier-border] fo-text-[--text-normal] fo-rounded"
         >
-          🔄 重新分类
+          🔄 重新生成
         </button>
       </div>
     </div>
   );
-};
-
-// 步骤5: 元数据生成详情
+};// 步骤5: 元数据生成详情
 export const MetadataStepDetail: React.FC<StepDetailProps> = ({
   stepNumber,
   stepName,
@@ -753,4 +916,5 @@ export const RoadmapStepDetail: React.FC<StepDetailProps> = ({
     </div>
   );
 };
+
 
