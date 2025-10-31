@@ -1135,7 +1135,13 @@ ${noteLink}
         >
           ▶️ 开始处理
         </button>
-        {/* 重置流程按钮已移除 */}
+        <button
+          onClick={handleReset}
+          disabled={workflowStatus === 'running'}
+          className="fo-px-3 fo-py-1 fo-bg-[--background-modifier-border] fo-text-[--text-normal] fo-rounded disabled:fo-opacity-50"
+        >
+          🔄 重置
+        </button>
         {workflowStatus === 'running' && (
           <button
             onClick={handleCancel}
