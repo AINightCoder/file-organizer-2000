@@ -1098,17 +1098,7 @@ ${noteLink}
     await executeStep(currentStepIndex, overrides);
   }, [currentStepIndex, addLog, executeStep, plugin]);
 
-  // 重置流程
-  const handleReset = React.useCallback(() => {
-    setWorkflowStatus('idle');
-    setCurrentStepIndex(0);
-    setSteps(INITIAL_STEPS);
-    setProcessingLog([]);
-    setCurrentFile(initialFile);
-    setCurrentContent(initialContent);
-    setCustomParams({});
-    addLog('🔄 流程已重置');
-  }, [initialFile, initialContent, addLog]);
+  // 重置流程 功能已移除
 
   // 取消流程
   const handleCancel = React.useCallback(() => {
@@ -1135,13 +1125,7 @@ ${noteLink}
         >
           ▶️ 开始处理
         </button>
-        <button
-          onClick={handleReset}
-          disabled={workflowStatus === 'running'}
-          className="fo-px-3 fo-py-1 fo-bg-[--background-modifier-border] fo-text-[--text-normal] fo-rounded disabled:fo-opacity-50"
-        >
-          🔄 重置
-        </button>
+        {/* 重置流程按钮已移除 */}
         {workflowStatus === 'running' && (
           <button
             onClick={handleCancel}

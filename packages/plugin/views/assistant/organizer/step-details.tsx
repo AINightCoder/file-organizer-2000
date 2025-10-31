@@ -314,16 +314,7 @@ export const FormatStepDetail: React.FC<StepDetailProps> = ({
       </div>
 
       <div className="fo-mb-3 fo-flex fo-justify-between fo-items-center">
-        <button
-          type="button"
-          onClick={() => {
-            const sys = (result?.data as any)?.systemDefaultPrompt || '';
-            setCustomPrompt(sys);
-          }}
-          className="fo-text-xs fo-text-[--text-muted] hover:fo-text-[--text-normal]"
-        >
-          Reset to system default
-        </button>
+        {/* Reset to system default removed */}
       </div>
 
       <div className="fo-flex fo-gap-2">
