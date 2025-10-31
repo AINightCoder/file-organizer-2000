@@ -185,6 +185,18 @@ export const RenameStepDetail: React.FC<StepDetailProps> = ({
         </div>
       </div>
 
+      <div className="fo-mb-3">
+        <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">重命名 Prompt（可选）</div>
+        <textarea
+          value={customPrompt}
+          onChange={(e) => setCustomPrompt(e.target.value)}
+          placeholder="为重命名提供提示词，影响AI生成建议..."
+          className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded fo-resize-y"
+          rows={3}
+          style={{ width: '100%', maxWidth: 'none', display: 'block', boxSizing: 'border-box', minWidth: 0 }}
+        />
+      </div>
+
       <div className="fo-flex fo-gap-2">
         <button
           onClick={handleApplyClick}
@@ -199,33 +211,6 @@ export const RenameStepDetail: React.FC<StepDetailProps> = ({
         >
           🔄 重新生成
         </button>
-        <div className="fo-ml-2 fo-flex-1">
-          <div className="fo-mt-3 fo-mb-2 fo-text-sm fo-text-[--text-muted]">重命名 Prompt（可选）</div>
-          <textarea
-            value={customPrompt}
-            onChange={(e) => setCustomPrompt(e.target.value)}
-            placeholder="为重命名提供提示词，影响AI生成建议..."
-            className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded fo-resize-y"
-            rows={3}
-            style={{ width: '100%', maxWidth: 'none', display: 'block', boxSizing: 'border-box', minWidth: 0 }}
-          />
-          <div className="fo-mt-2 fo-flex fo-gap-2">
-            <button
-              onClick={() => onRetry({ prompt: customPrompt.trim() })}
-              disabled={customPrompt.trim().length === 0}
-              className="fo-px-3 fo-py-1 fo-bg-[--background-modifier-border] fo-text-[--text-normal] fo-rounded disabled:fo-opacity-50 disabled:fo-cursor-not-allowed"
-            >
-              🔁 使用自定义 prompt 重新生成
-            </button>
-            <button
-              type="button"
-              onClick={() => { setCustomPrompt(''); }}
-              className="fo-text-xs fo-text-[--text-muted] hover:fo-text-[--text-normal]"
-            >
-              清除 prompt
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -300,21 +285,16 @@ export const FormatStepDetail: React.FC<StepDetailProps> = ({
 
       {/* 预览功能已移除 */}
 
-            <div className="fo-mb-3">
-        <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">Custom prompt</div>
-        <div className="fo-w-full">
-          <textarea
-            value={customPrompt}
-            onChange={(e) => setCustomPrompt(e.target.value)}
-            className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded fo-resize-y"
-            rows={5}
-            style={{ width: '100%', maxWidth: 'none', display: 'block', boxSizing: 'border-box', minWidth: 0 }}
-          />
-        </div>
-      </div>
-
-      <div className="fo-mb-3 fo-flex fo-justify-between fo-items-center">
-        {/* Reset to system default removed */}
+      <div className="fo-mb-3">
+        <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">格式优化 Prompt（可选）</div>
+        <textarea
+          value={customPrompt}
+          onChange={(e) => setCustomPrompt(e.target.value)}
+          placeholder="为格式优化提供提示词，影响AI优化方式..."
+          className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded fo-resize-y"
+          rows={3}
+          style={{ width: '100%', maxWidth: 'none', display: 'block', boxSizing: 'border-box', minWidth: 0 }}
+        />
       </div>
 
       <div className="fo-flex fo-gap-2">
@@ -465,33 +445,33 @@ export const Level2FolderStepDetail: React.FC<StepDetailProps> = ({
         </div>
       </div>
 
-        <div className="fo-mb-3">
-          <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">自定义 Prompt（可选）</div>
-          <textarea
-            value={customPrompt}
-            onChange={(e) => setCustomPrompt(e.target.value)}
-            placeholder={plugin && (plugin.settings as any).customFolderInstructions ? "输入二级目录分类提示词..." : "可选：覆盖默认的二级目录分类指令"}
-            className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded fo-resize-y"
-            rows={4}
-            style={{ width: '100%', maxWidth: 'none', display: 'block', boxSizing: 'border-box', minWidth: 0 }}
-          />
-        </div>
+      <div className="fo-mb-3">
+        <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">二级目录分类 Prompt（可选）</div>
+        <textarea
+          value={customPrompt}
+          onChange={(e) => setCustomPrompt(e.target.value)}
+          placeholder="为二级目录分类提供提示词，影响AI分类建议..."
+          className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded fo-resize-y"
+          rows={3}
+          style={{ width: '100%', maxWidth: 'none', display: 'block', boxSizing: 'border-box', minWidth: 0 }}
+        />
+      </div>
 
-        <div className="fo-flex fo-gap-2">
-          <button
-            onClick={() => onApply({ selectedFolder, prompt: customPrompt && customPrompt.trim().length > 0 ? customPrompt.trim() : undefined })}
-            disabled={!selectedFolder}
-            className="fo-px-4 fo-py-2 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded fo-font-medium disabled:fo-opacity-50 disabled:fo-cursor-not-allowed"
-          >
-            ✓ 应用并继续
-          </button>
-          <button
-            onClick={() => onRetry(customPrompt && customPrompt.trim().length > 0 ? { prompt: customPrompt.trim() } : undefined)}
-            className="fo-px-4 fo-py-2 fo-bg-[--background-modifier-border] fo-text-[--text-normal] fo-rounded"
-          >
-            🔄 重新分类
-          </button>
-        </div>
+      <div className="fo-flex fo-gap-2">
+        <button
+          onClick={() => onApply({ selectedFolder })}
+          disabled={!selectedFolder}
+          className="fo-px-4 fo-py-2 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded fo-font-medium disabled:fo-opacity-50 disabled:fo-cursor-not-allowed"
+        >
+          ✓ 应用并继续
+        </button>
+        <button
+          onClick={() => onRetry(customPrompt && customPrompt.trim().length > 0 ? { prompt: customPrompt.trim() } : undefined)}
+          className="fo-px-4 fo-py-2 fo-bg-[--background-modifier-border] fo-text-[--text-normal] fo-rounded"
+        >
+          🔄 重新分类
+        </button>
+      </div>
     </div>
   );
 };
@@ -702,13 +682,13 @@ export const Level3FolderStepDetail: React.FC<StepDetailProps> = ({
       )}
 
       <div className="fo-mb-3">
-        <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">🛠 Prompt（可选）</div>
+        <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">三级目录分类 Prompt（可选）</div>
         <textarea
           value={customPrompt}
           onChange={(e) => setCustomPrompt(e.target.value)}
-          placeholder={data?.systemDefaultPrompt ? '覆盖默认提示词以重新分类…' : '填写提示词帮助模型更好分类…'}
+          placeholder="为三级目录分类提供提示词，影响AI分类建议..."
           className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded fo-resize-y"
-          rows={4}
+          rows={3}
           style={{ width: '100%', maxWidth: 'none', display: 'block', boxSizing: 'border-box', minWidth: 0 }}
         />
       </div>

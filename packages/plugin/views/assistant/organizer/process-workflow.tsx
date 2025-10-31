@@ -1098,7 +1098,17 @@ ${noteLink}
     await executeStep(currentStepIndex, overrides);
   }, [currentStepIndex, addLog, executeStep, plugin]);
 
-  // 重置流程 功能已移除
+  // 重置流程
+  const handleReset = React.useCallback(() => {
+    setWorkflowStatus('idle');
+    setCurrentStepIndex(0);
+    setSteps(INITIAL_STEPS);
+    setProcessingLog([]);
+    setCurrentFile(initialFile);
+    setCurrentContent(initialContent);
+    setCustomParams({});
+    addLog('🔄 流程已重置');
+  }, [initialFile, initialContent, addLog]);
 
   // 取消流程
   const handleCancel = React.useCallback(() => {
