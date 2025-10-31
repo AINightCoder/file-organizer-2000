@@ -82,7 +82,7 @@ export const RenameStepDetail: React.FC<StepDetailProps> = ({
       </div>
 
       <div className="fo-mb-3">
-        <div className="fo-flex fo-items-center fo-gap-2 fo-mb-2">
+        <div className="fo-flex fo-items-center fo-gap-3 fo-mb-2">
           <span className="fo-text-sm fo-text-[--text-muted]">当前名称:</span>
           <span className="fo-font-medium fo-text-[--text-normal]">{oldName}</span>
         </div>
@@ -92,7 +92,7 @@ export const RenameStepDetail: React.FC<StepDetailProps> = ({
         <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">
           📝 请选择新的文件名：
         </div>
-        <div className="fo-space-y-2 fo-max-h-80 fo-overflow-y-auto">
+        <div className="fo-space-y-3 fo-max-h-80 fo-overflow-y-auto">
           {suggestions.map((suggestion: any, idx: number) => {
             const isSelected = selectedName === suggestion.title && !showCustomInput;
 
@@ -109,7 +109,7 @@ export const RenameStepDetail: React.FC<StepDetailProps> = ({
                     : 'fo-border-[--background-modifier-border] hover:fo-border-[--interactive-accent]/50 hover:fo-bg-[--background-modifier-hover]'
                 }`}
               >
-                <div className="fo-flex fo-items-center fo-gap-2">
+                <div className="fo-flex fo-items-center fo-gap-3">
                   <input
                     type="radio"
                     checked={isSelected}
@@ -123,13 +123,19 @@ export const RenameStepDetail: React.FC<StepDetailProps> = ({
                     {suggestion.title}
                   </span>
                   {idx === 0 && (
-                    <span className="fo-text-xs fo-px-2 fo-py-0.5 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded">
+                    <span
+                      className="fo-inline-flex fo-items-center fo-gap-1 fo-text-xs fo-font-semibold fo-rounded fo-px-2 fo-py-0.5"
+                      style={{ fontSize: '0.68rem', color: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.12)', border: '1px solid rgba(37, 99, 235, 0.25)' }}
+                    >
                       推荐
                     </span>
                   )}
                 </div>
                 {suggestion.reason && (
-                  <div className="fo-mt-1 fo-ml-6 fo-text-sm fo-text-[--text-muted]">
+                  <div
+                    className="fo-mt-2 fo-ml-6 fo-leading-snug fo-text-[--text-muted] fo-opacity-80"
+                    style={{ fontSize: '0.72rem' }}
+                  >
                     💡 {suggestion.reason}
                   </div>
                 )}
@@ -149,7 +155,7 @@ export const RenameStepDetail: React.FC<StepDetailProps> = ({
                 : 'fo-border-[--background-modifier-border] hover:fo-border-[--interactive-accent]/50 hover:fo-bg-[--background-modifier-hover]'
             }`}
           >
-            <div className="fo-flex fo-items-center fo-gap-2">
+            <div className="fo-flex fo-items-center fo-gap-3">
               <input
                 type="radio"
                 checked={showCustomInput}
@@ -235,7 +241,6 @@ export const FormatStepDetail: React.FC<StepDetailProps> = ({
   onRetry
 }) => {
   const data = result?.data;
-  const [showPreview, setShowPreview] = React.useState(false);
   const [customPrompt, setCustomPrompt] = React.useState('');
   React.useEffect(() => {
     const initial = (
@@ -293,19 +298,7 @@ export const FormatStepDetail: React.FC<StepDetailProps> = ({
         </div>
       </div>
 
-      <div className="fo-mb-3">
-        <button
-          onClick={() => setShowPreview(!showPreview)}
-          className="fo-text-sm fo-text-[--interactive-accent] hover:fo-underline"
-        >
-          {showPreview ? '隐藏预览 ▲' : '查看预览 ▼'}
-        </button>
-        {showPreview && (
-          <div className="fo-mt-2 fo-p-3 fo-bg-[--background-primary] fo-rounded fo-text-xs fo-max-h-60 fo-overflow-y-auto fo-whitespace-pre-wrap">
-            {data?.fullContent || data?.preview || '无预览'}
-          </div>
-        )}
-      </div>
+      {/* 预览功能已移除 */}
 
             <div className="fo-mb-3">
         <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">Custom prompt</div>
@@ -414,7 +407,7 @@ export const Level2FolderStepDetail: React.FC<StepDetailProps> = ({
         <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">
           📁 请选择目标二级目录：
         </div>
-        <div className="fo-space-y-2 fo-max-h-96 fo-overflow-y-auto">
+        <div className="fo-space-y-3 fo-max-h-96 fo-overflow-y-auto">
           {sortedSuggestions.map((suggestion: any, idx: number) => {
             const isSelected = selectedFolder === suggestion.folder;
             const scorePercent = Math.round((suggestion.score || 0) * 100);
@@ -429,9 +422,9 @@ export const Level2FolderStepDetail: React.FC<StepDetailProps> = ({
                     : 'fo-border-[--background-modifier-border] hover:fo-border-[--interactive-accent]/50 hover:fo-bg-[--background-modifier-hover]'
                 }`}
               >
-                <div className="fo-flex fo-items-start fo-justify-between fo-gap-2">
+                <div className="fo-flex fo-items-start fo-justify-between fo-gap-3">
                   <div className="fo-flex-1">
-                    <div className="fo-flex fo-items-center fo-gap-2 fo-flex-wrap">
+                    <div className="fo-flex fo-items-center fo-gap-3 fo-flex-wrap">
                       <input
                         type="radio"
                         checked={isSelected}
@@ -442,23 +435,33 @@ export const Level2FolderStepDetail: React.FC<StepDetailProps> = ({
                         {suggestion.folder}
                       </span>
                       {idx === 0 && (
-                        <span className="fo-text-xs fo-px-2 fo-py-0.5 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded">
+                        <span
+                          className="fo-inline-flex fo-items-center fo-gap-1 fo-text-xs fo-font-semibold fo-rounded fo-px-2 fo-py-0.5"
+                          style={{ fontSize: '0.68rem', color: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.12)', border: '1px solid rgba(37, 99, 235, 0.25)' }}
+                        >
                           推荐
                         </span>
                       )}
                       {suggestion.exists && (
-                        <span className="fo-text-xs fo-px-2 fo-py-0.5 fo-bg-green-500 fo-text-white fo-rounded">
+                        <span
+                          className="fo-inline-flex fo-items-center fo-gap-1 fo-text-xs fo-font-medium fo-rounded fo-px-2 fo-py-0.5"
+                          style={{
+                            fontSize: '0.68rem',
+                            color: '#16a34a',
+                            backgroundColor: 'rgba(22, 163, 74, 0.12)',
+                            border: '1px solid rgba(22, 163, 74, 0.25)',
+                          }}
+                        >
                           已存在
                         </span>
                       )}
-                      {!suggestion.exists && (
-                        <span className="fo-text-xs fo-px-2 fo-py-0.5 fo-bg-gray-400 fo-text-white fo-rounded">
-                          新建
-                        </span>
-                      )}
+
                     </div>
                     {suggestion.reason && (
-                      <div className="fo-mt-1 fo-ml-6 fo-text-sm fo-text-[--text-muted]">
+                      <div
+                        className="fo-mt-2 fo-ml-6 fo-leading-snug fo-text-[--text-muted] fo-opacity-80"
+                        style={{ fontSize: '0.72rem' }}
+                      >
                         💡 {suggestion.reason}
                       </div>
                     )}
@@ -591,7 +594,7 @@ export const Level3FolderStepDetail: React.FC<StepDetailProps> = ({
   }, [data]);
 
   const sortedSuggestions = React.useMemo(
-    () => [...suggestions].sort((a, b) => ((b.score ?? 0) - (a.score ?? 0))),
+    () => [...suggestions].sort((a, b) => ((b.score || 0) - (a.score || 0))),
     [suggestions]
   );
 
@@ -620,7 +623,7 @@ export const Level3FolderStepDetail: React.FC<StepDetailProps> = ({
       </div>
 
       <div className="fo-mb-3 fo-space-y-2">
-        <div className="fo-flex fo-items-center fo-gap-2">
+        <div className="fo-flex fo-items-center fo-gap-3">
           <span className="fo-text-[--text-muted]">最终目录:</span>
           <span className="fo-font-medium fo-text-[--interactive-accent]">
             {selectedFolder || data?.finalFolder || '暂未选择'}
@@ -631,7 +634,7 @@ export const Level3FolderStepDetail: React.FC<StepDetailProps> = ({
       <div className="fo-mb-3">
         <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">🗂️ 请选择目标目录:</div>
         {sortedSuggestions.length > 0 ? (
-          <div className="fo-space-y-2 fo-max-h-96 fo-overflow-y-auto">
+          <div className="fo-space-y-3 fo-max-h-96 fo-overflow-y-auto">
             {sortedSuggestions.map((suggestion: any, idx: number) => {
               const isSelected = selectedFolder === suggestion.folder;
               const rawScore = typeof suggestion.score === 'number' ? suggestion.score : undefined;
@@ -648,9 +651,9 @@ export const Level3FolderStepDetail: React.FC<StepDetailProps> = ({
                       : 'fo-border-[--background-modifier-border] hover:fo-border-[--interactive-accent]/50 hover:fo-bg-[--background-modifier-hover]'
                   }`}
                 >
-                  <div className="fo-flex fo-items-start fo-justify-between fo-gap-2">
+                  <div className="fo-flex fo-items-start fo-justify-between fo-gap-3">
                     <div className="fo-flex-1">
-                      <div className="fo-flex fo-items-center fo-gap-2 fo-flex-wrap">
+                      <div className="fo-flex fo-items-center fo-gap-3 fo-flex-wrap">
                         <input
                           type="radio"
                           checked={isSelected}
@@ -661,29 +664,32 @@ export const Level3FolderStepDetail: React.FC<StepDetailProps> = ({
                           {suggestion.folder}
                         </span>
                         {idx === 0 && (
-                          <span className="fo-text-xs fo-px-2 fo-py-0.5 fo-bg-[--interactive-accent] fo-text-[--text-on-accent] fo-rounded">
+                          <span
+                            className="fo-inline-flex fo-items-center fo-gap-1 fo-text-xs fo-font-semibold fo-rounded fo-px-2 fo-py-0.5"
+                            style={{ fontSize: '0.68rem', color: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.12)', border: '1px solid rgba(37, 99, 235, 0.25)' }}
+                          >
                             推荐
                           </span>
                         )}
-                        {typeof suggestion.exists === 'boolean' && (
+                        {typeof suggestion.exists === 'boolean' && suggestion.exists && (
                           <span
-                            className={`fo-text-xs fo-px-2 fo-py-0.5 fo-rounded ${
-                              suggestion.exists
-                                ? 'fo-bg-green-500 fo-text-white'
-                                : 'fo-bg-gray-400 fo-text-white'
-                            }`}
+                            className="fo-inline-flex fo-items-center fo-gap-1 fo-text-xs fo-font-medium fo-rounded fo-px-2 fo-py-0.5"
+                            style={{
+                              fontSize: '0.68rem',
+                              color: '#16a34a',
+                              backgroundColor: 'rgba(22, 163, 74, 0.12)',
+                              border: '1px solid rgba(22, 163, 74, 0.25)',
+                            }}
                           >
-                            {suggestion.exists ? '已存在' : '新建'}
+                            已存在
                           </span>
                         )}
-                        {suggestion.isNewFolder && typeof suggestion.exists !== 'boolean' && (
-                          <span className="fo-text-xs fo-px-2 fo-py-0.5 fo-bg-gray-400 fo-text-white fo-rounded">
-                            新建
-                          </span>
-                        )}
-                      </div>
+                                              </div>
                       {suggestion.reason && (
-                        <div className="fo-mt-1 fo-ml-6 fo-text-sm fo-text-[--text-muted]">
+                        <div
+                          className="fo-mt-2 fo-ml-6 fo-leading-snug fo-text-[--text-muted] fo-opacity-80"
+                          style={{ fontSize: '0.72rem' }}
+                        >
                           理由: {suggestion.reason}
                         </div>
                       )}
@@ -767,7 +773,7 @@ export const MetadataStepDetail: React.FC<StepDetailProps> = ({
   onRetry
 }) => {
   const data = result?.data;
-  const [showYaml, setShowYaml] = React.useState(false);
+  // YAML 预览功能已移除
 
   return (
     <div className="step-detail p-4 bg-[--background-secondary] rounded-lg">
@@ -793,19 +799,7 @@ export const MetadataStepDetail: React.FC<StepDetailProps> = ({
         </div>
       </div>
 
-      <div className="fo-mb-3">
-        <button
-          onClick={() => setShowYaml(!showYaml)}
-          className="fo-text-sm fo-text-[--interactive-accent] hover:fo-underline"
-        >
-          {showYaml ? '隐藏YAML ▲' : '查看完整YAML ▼'}
-        </button>
-        {showYaml && (
-          <div className="fo-mt-2 fo-p-3 fo-bg-[--background-primary] fo-rounded fo-text-xs fo-max-h-60 fo-overflow-y-auto fo-font-mono">
-            <pre>{data?.yamlPreview || '无预览'}</pre>
-          </div>
-        )}
-      </div>
+      {/* YAML 预览功能已移除 */}
 
       <div className="fo-flex fo-gap-2">
         <button
@@ -889,11 +883,11 @@ export const RoadmapStepDetail: React.FC<StepDetailProps> = ({
       </div>
 
       <div className="fo-mb-3 fo-space-y-2">
-        <div className="fo-flex fo-items-center fo-gap-2">
+        <div className="fo-flex fo-items-center fo-gap-3">
           <span className="fo-text-[--text-muted]">Roadmap路径:</span>
           <span className="fo-font-medium fo-text-xs">{data?.roadmapPath}</span>
         </div>
-        <div className="fo-flex fo-items-center fo-gap-2">
+        <div className="fo-flex fo-items-center fo-gap-3">
           <span className="fo-text-[--text-muted]">关联笔记:</span>
           <span className="fo-font-medium">[[{data?.linkedNote}]]</span>
         </div>
@@ -916,5 +910,3 @@ export const RoadmapStepDetail: React.FC<StepDetailProps> = ({
     </div>
   );
 };
-
-
