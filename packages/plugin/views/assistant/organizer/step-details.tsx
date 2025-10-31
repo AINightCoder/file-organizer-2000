@@ -410,7 +410,7 @@ export const Level2FolderStepDetail: React.FC<StepDetailProps> = ({
         <div className="fo-space-y-3 fo-max-h-96 fo-overflow-y-auto">
           {sortedSuggestions.map((suggestion: any, idx: number) => {
             const isSelected = selectedFolder === suggestion.folder;
-            const scorePercent = Math.round((suggestion.score || 0) * 100);
+            // scorePercent UI removed
 
             return (
               <div
@@ -466,17 +466,7 @@ export const Level2FolderStepDetail: React.FC<StepDetailProps> = ({
                       </div>
                     )}
                   </div>
-                  <div className="fo-flex fo-items-center fo-gap-1">
-                    <div className="fo-text-sm fo-font-medium fo-text-[--text-accent]">
-                      {scorePercent}%
-                    </div>
-                    <div className="fo-w-16 fo-h-2 fo-bg-[--background-modifier-border] fo-rounded fo-overflow-hidden">
-                      <div
-                        className="fo-h-full fo-bg-[--interactive-accent]"
-                        style={{ width: `${scorePercent}%` }}
-                      />
-                    </div>
-                  </div>
+                  {/* scorePercent display removed */}
                 </div>
               </div>
             );
@@ -637,9 +627,7 @@ export const Level3FolderStepDetail: React.FC<StepDetailProps> = ({
           <div className="fo-space-y-3 fo-max-h-96 fo-overflow-y-auto">
             {sortedSuggestions.map((suggestion: any, idx: number) => {
               const isSelected = selectedFolder === suggestion.folder;
-              const rawScore = typeof suggestion.score === 'number' ? suggestion.score : undefined;
-              const clampedScore = rawScore !== undefined ? Math.max(0, Math.min(rawScore, 1)) : undefined;
-              const scorePercent = clampedScore !== undefined ? Math.round(clampedScore * 100) : undefined;
+              // scorePercent UI removed
 
               return (
                 <div
@@ -694,19 +682,7 @@ export const Level3FolderStepDetail: React.FC<StepDetailProps> = ({
                         </div>
                       )}
                     </div>
-                    {scorePercent !== undefined && (
-                      <div className="fo-flex fo-items-center fo-gap-1">
-                        <div className="fo-text-sm fo-font-medium fo-text-[--text-accent]">
-                          {scorePercent}%
-                        </div>
-                        <div className="fo-w-16 fo-h-2 fo-bg-[--background-modifier-border] fo-rounded fo-overflow-hidden">
-                          <div
-                            className="fo-h-full fo-bg-[--interactive-accent]"
-                            style={{ width: `${scorePercent}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
+                    {/* scorePercent display removed */}
                   </div>
                 </div>
               );

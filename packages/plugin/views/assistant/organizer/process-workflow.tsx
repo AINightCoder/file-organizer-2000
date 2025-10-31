@@ -191,8 +191,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
             oldLength: content.length,
             newLength: formatted.length,
             diff: formatted.length - content.length,
-            preview: formatted.substring(0, 500),
-            fullContent: formatted
+            // preview/fullContent removed (preview UI deprecated)
           }
         };
       } else {
@@ -510,7 +509,7 @@ summary: "${metadata?.summary || ''}"
           metadata,
           cate,
           subcate,
-          yamlPreview: yamlFrontmatter
+          // yamlPreview removed (preview UI deprecated)
         }
       };
     } catch (error: any) {
