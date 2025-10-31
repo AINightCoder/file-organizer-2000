@@ -7,7 +7,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createOllama } from "ollama-ai-provider";
 import { FileOrganizerSettings } from "../settings";
-import { DEFAULT_FOLDER_PROMPT, DEFAULT_LENGTH_SPLIT_PROMPT, DEFAULT_ATOMIC_SPLIT_PROMPT, DEFAULT_ENHANCED_METADATA_PROMPT, DEFAULT_ROADMAP_PROMPT, DEFAULT_OPTIMIZE_PROMPT } from "../prompts";
+import { DEFAULT_FOLDER_PROMPT, DEFAULT_LENGTH_SPLIT_PROMPT, DEFAULT_ATOMIC_SPLIT_PROMPT, DEFAULT_ENHANCED_METADATA_PROMPT, DEFAULT_ROADMAP_PROMPT, DEFAULT_ROADMAP_INSERT_PROMPT, DEFAULT_OPTIMIZE_PROMPT } from "../prompts";
 
 // Types
 export interface TagSuggestion {
@@ -148,6 +148,7 @@ export interface FindInsertPositionOptions {
   noteContent: string;       // 笔记内容
   noteTitle: string;         // 笔记标题
   notePath: string;          // 笔记路径
+  customPrompt?: string;     // 自定义提示词
 }
 
 // Schema definitions
@@ -936,7 +937,7 @@ ${content.substring(0, 500)}...`;
   async findRoadmapInsertPosition(options: FindInsertPositionOptions): Promise<RoadmapInsertPosition> {
     try {
       logger.info("Finding roadmap insert position with options:", options);
-      const { roadmapContent, noteContent, noteTitle, notePath } = options;
+      const { roadmapContent, noteContent, noteTitle, notePath, customPrompt } = options;
 
       // 验证输入
       if (!roadmapContent || !noteContent || !noteTitle) {
@@ -1004,17 +1005,10 @@ ${content.substring(0, 500)}...`;
         return `• [S${si + 1}] ${s.title}\n${modules}`;
       }).join("\n");
 
-      const selectionPrompt = `基于参考流程（docs/flow/参考流程.md），Roadmap 的插入层次为：阶段(初/中/高) → 模块 → 知识点。
-不得修改已有双链；若没有合适模块/知识点，需要在合适位置"新建模块"和/或"新建知识点"。
+      // 使用自定义提示词或默认提示词
+      const basePrompt = customPrompt || DEFAULT_ROADMAP_INSERT_PROMPT;
 
-【重要规则】
-1. 每个笔记链接必须归属到某个"知识点"下（格式：- 知识点：xxx）
-2. 如果现有知识点都不合适，必须设置 shouldCreateKnowledgePoint=true 并提供新知识点标题
-3. 知识点应该是具体的、可定位的概念或技能点（如"Promise基础"、"异步函数用法"）
-4. 优先匹配已有知识点，确保相关内容聚合在一起
-5. 新建知识点时，标题应简洁明确，避免与已有知识点重复
-
-请根据笔记信息，从下列阶段/模块中选择最合适的位置，并判断是否需要新建模块/知识点（只做选择与是否新建判断，不输出行号）：
+      const selectionPrompt = `${basePrompt}
 
 【笔记信息】
 - 标题: ${noteTitle}

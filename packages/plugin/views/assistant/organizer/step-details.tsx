@@ -1,4 +1,5 @@
 import * as React from "react";
+import { DEFAULT_ROADMAP_INSERT_PROMPT } from "../../../prompts";
 
 // ============ 通用步骤详情组件 ============
 interface StepDetailProps {
@@ -797,10 +798,34 @@ export const RoadmapStepDetail: React.FC<StepDetailProps> = ({
   stepName,
   icon,
   result,
+  plugin,
   onApply,
   onRetry
 }) => {
   const data = result?.data;
+  const [generatePrompt, setGeneratePrompt] = React.useState<string>('');
+  const [insertPrompt, setInsertPrompt] = React.useState<string>('');
+
+  React.useEffect(() => {
+    const initialGenerate = (
+      (result && (result as any).data && (result as any).data.generatePromptUsed) ||
+      (plugin && (plugin.settings as any) && (plugin.settings as any).roadmapPrompt) ||
+      ''
+    ) as string;
+    if (initialGenerate !== generatePrompt) {
+      setGeneratePrompt(initialGenerate);
+    }
+
+    const initialInsert = (
+      (result && (result as any).data && (result as any).data.insertPromptUsed) ||
+      (plugin && (plugin.settings as any) && (plugin.settings as any).roadmapInsertPrompt) ||
+      DEFAULT_ROADMAP_INSERT_PROMPT
+    ) as string;
+    if (initialInsert !== insertPrompt) {
+      setInsertPrompt(initialInsert);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, plugin]);
 
   if (data?.disabled) {
     return (
@@ -865,6 +890,30 @@ export const RoadmapStepDetail: React.FC<StepDetailProps> = ({
         </div>
       </div>
 
+      <div className="fo-mb-3">
+        <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">Roadmap生成 Prompt（可选）</div>
+        <textarea
+          value={generatePrompt}
+          onChange={(e) => setGeneratePrompt(e.target.value)}
+          placeholder="控制Roadmap生成风格（仅在首次生成时使用）..."
+          className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded fo-resize-y"
+          rows={3}
+          style={{ width: '100%', maxWidth: 'none', display: 'block', boxSizing: 'border-box', minWidth: 0 }}
+        />
+      </div>
+
+      <div className="fo-mb-3">
+        <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">插入位置选择 Prompt（可选）</div>
+        <textarea
+          value={insertPrompt}
+          onChange={(e) => setInsertPrompt(e.target.value)}
+          placeholder="控制双链插入位置的选择策略（阶段/模块/知识点）..."
+          className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded fo-resize-y"
+          rows={3}
+          style={{ width: '100%', maxWidth: 'none', display: 'block', boxSizing: 'border-box', minWidth: 0 }}
+        />
+      </div>
+
       <div className="fo-flex fo-gap-2">
         <button
           onClick={onApply}
@@ -873,7 +922,16 @@ export const RoadmapStepDetail: React.FC<StepDetailProps> = ({
           ✓ 完成流程
         </button>
         <button
-          onClick={() => onRetry()}
+          onClick={() => {
+            const params: any = {};
+            if (generatePrompt && generatePrompt.trim().length > 0) {
+              params.generatePrompt = generatePrompt.trim();
+            }
+            if (insertPrompt && insertPrompt.trim().length > 0) {
+              params.insertPrompt = insertPrompt.trim();
+            }
+            onRetry(Object.keys(params).length > 0 ? params : undefined);
+          }}
           className="fo-px-4 fo-py-2 fo-bg-[--background-modifier-border] fo-text-[--text-normal] fo-rounded"
         >
           🔄 重新关联

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { TFile, Notice } from "obsidian";
 import FileOrganizer from "../../../index";
-import { DEFAULT_ROADMAP_PROMPT, DEFAULT_OPTIMIZE_PROMPT, DEFAULT_RENAME_INSTRUCTIONS } from "../../../prompts";
+import { DEFAULT_ROADMAP_PROMPT, DEFAULT_ROADMAP_INSERT_PROMPT, DEFAULT_OPTIMIZE_PROMPT, DEFAULT_RENAME_INSTRUCTIONS } from "../../../prompts";
 import { logger } from "../../../services/logger";
 import {
   RenameStepDetail,
@@ -519,7 +519,7 @@ summary: "${metadata?.summary || ''}"
   }, [plugin, addLog, customParams]);
 
   // 步骤6: Roadmap关联
-  const doRoadmapLink = React.useCallback(async (file: TFile): Promise<StepResult> => {
+  const doRoadmapLink = React.useCallback(async (file: TFile, generatePrompt?: string, insertPrompt?: string): Promise<StepResult> => {
     try {
       if (!plugin.settings.enableRoadmapLinking) {
         addLog('  ℹ️ Roadmap关联功能未启用');
@@ -574,15 +574,18 @@ summary: "${metadata?.summary || ''}"
 
         try {
           const domain = domainCate || file.basename;
-          const roadmapPrompt = plugin.settings.roadmapPrompt && plugin.settings.roadmapPrompt.trim().length > 0
-            ? plugin.settings.roadmapPrompt
-            : DEFAULT_ROADMAP_PROMPT;
+          // 优先使用函数参数的generatePrompt，否则使用settings中的roadmapPrompt，最后使用默认值
+          const basePrompt = generatePrompt && generatePrompt.trim().length > 0
+            ? generatePrompt
+            : (plugin.settings.roadmapPrompt && plugin.settings.roadmapPrompt.trim().length > 0
+              ? plugin.settings.roadmapPrompt
+              : DEFAULT_ROADMAP_PROMPT);
 
           let finalRoadmapPrompt: string;
-          if (roadmapPrompt.includes('${domain}')) {
-            finalRoadmapPrompt = roadmapPrompt.replace(/\$\{domain\}/g, domain);
+          if (basePrompt.includes('${domain}')) {
+            finalRoadmapPrompt = basePrompt.replace(/\$\{domain\}/g, domain);
           } else {
-            finalRoadmapPrompt = `${roadmapPrompt}
+            finalRoadmapPrompt = `${basePrompt}
 
 领域: ${domain}`;
           }
@@ -622,11 +625,19 @@ summary: "${metadata?.summary || ''}"
         if (roadmapText.includes(`[[${noteTitle}]]`)) {
           addLog('  ℹ️ Roadmap 已存在该链接，跳过插入');
         } else if (plugin.aiService && (plugin.aiService as any).findRoadmapInsertPosition) {
+          // 优先使用函数参数的insertPrompt，否则使用settings中的roadmapInsertPrompt，最后使用默认值
+          const finalInsertPrompt = insertPrompt && insertPrompt.trim().length > 0
+            ? insertPrompt
+            : ((plugin.settings as any).roadmapInsertPrompt && (plugin.settings as any).roadmapInsertPrompt.trim().length > 0
+              ? (plugin.settings as any).roadmapInsertPrompt
+              : DEFAULT_ROADMAP_INSERT_PROMPT);
+
           const insert = await (plugin.aiService as any).findRoadmapInsertPosition({
             roadmapContent: roadmapText,
             noteContent: content,
             noteTitle,
             notePath: file.path,
+            customPrompt: finalInsertPrompt,
           });
 
           // 显示错误和警告信息
@@ -803,9 +814,27 @@ ${noteLink}
           } as StepResult;
           break;
         }
-        case 5:
-          result = await doRoadmapLink(currentFile);
+        case 5: {
+          const __rawGenerate = (overrides?.generatePrompt ?? customParams[5]?.generatePrompt ?? (plugin.settings as any).roadmapPrompt ?? '');
+          const __usedGenerate = (typeof __rawGenerate === 'string' ? __rawGenerate.trim() : '') || '';
+
+          const __rawInsert = (overrides?.insertPrompt ?? customParams[5]?.insertPrompt ?? (plugin.settings as any).roadmapInsertPrompt ?? DEFAULT_ROADMAP_INSERT_PROMPT);
+          const __usedInsert = (typeof __rawInsert === 'string' ? __rawInsert.trim() : '') || DEFAULT_ROADMAP_INSERT_PROMPT;
+
+          result = await doRoadmapLink(currentFile, __usedGenerate, __usedInsert);
+          // Augment result with prompt info for UI initialization
+          result = {
+            ...result,
+            data: {
+              ...(result as any).data,
+              generatePromptUsed: __usedGenerate,
+              insertPromptUsed: __usedInsert,
+              settingsPrompt: (plugin.settings as any).roadmapPrompt || '',
+              settingsInsertPrompt: (plugin.settings as any).roadmapInsertPrompt || DEFAULT_ROADMAP_INSERT_PROMPT
+            }
+          } as StepResult;
           break;
+        }
         default:
           throw new Error('未知步骤');
       }
@@ -1107,6 +1136,44 @@ ${noteLink}
           } catch (e: any) {
             addLog(`  Failed to save metadata prompt: ${e?.message || e}`);
             new Notice(`Failed to save default prompt: ${e?.message || e}`);
+          }
+        }
+      }
+      // Support custom prompts for roadmap linking (step 5)
+      if (currentStepIndex === 5) {
+        const generatePromptVal = typeof (params as any).generatePrompt === 'string' ? ((params as any).generatePrompt as string).trim() : '';
+        const insertPromptVal = typeof (params as any).insertPrompt === 'string' ? ((params as any).insertPrompt as string).trim() : '';
+
+        normalized = {};
+        if (generatePromptVal.length > 0) {
+          normalized.generatePrompt = generatePromptVal;
+        }
+        if (insertPromptVal.length > 0) {
+          normalized.insertPrompt = insertPromptVal;
+        }
+
+        // Save to settings
+        if (generatePromptVal.length > 0) {
+          try {
+            (plugin.settings as any).roadmapPrompt = generatePromptVal;
+            await (plugin as any).saveSettings?.();
+            addLog('  Roadmap generate prompt saved as global default.');
+            new Notice('Roadmap generate prompt saved as default');
+          } catch (e: any) {
+            addLog(`  Failed to save roadmap generate prompt: ${e?.message || e}`);
+            new Notice(`Failed to save generate prompt: ${e?.message || e}`);
+          }
+        }
+
+        if (insertPromptVal.length > 0) {
+          try {
+            (plugin.settings as any).roadmapInsertPrompt = insertPromptVal;
+            await (plugin as any).saveSettings?.();
+            addLog('  Roadmap insert prompt saved as global default.');
+            new Notice('Roadmap insert prompt saved as default');
+          } catch (e: any) {
+            addLog(`  Failed to save roadmap insert prompt: ${e?.message || e}`);
+            new Notice(`Failed to save insert prompt: ${e?.message || e}`);
           }
         }
       }
