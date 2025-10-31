@@ -416,7 +416,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   }, [plugin, addLog, ensureNestedFolders, customParams]);
 
 // 步骤5: 生成元数据
-  const doGenerateMetadata = React.useCallback(async (file: TFile): Promise<StepResult> => {
+  const doGenerateMetadata = React.useCallback(async (file: TFile, promptOverride?: string): Promise<StepResult> => {
     try {
       const content = await plugin.app.vault.read(file);
 
@@ -427,10 +427,11 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       let metadata: any = null;
 
       if (plugin.settings.enableEnhancedMetadata && plugin.aiService.generateEnhancedMetadata) {
+        const metadataPrompt = promptOverride ?? customParams[4]?.prompt ?? plugin.settings.enhancedMetadataPrompt;
         metadata = await plugin.aiService.generateEnhancedMetadata({
           content,
           filename: file.basename,
-          customPrompt: plugin.settings.enhancedMetadataPrompt
+          customPrompt: metadataPrompt
         });
         addLog(`  ✅ 元数据生成成功`);
       } else {
@@ -515,7 +516,7 @@ summary: "${metadata?.summary || ''}"
     } catch (error: any) {
       return { success: false, error: error.message };
     }
-  }, [plugin, addLog]);
+  }, [plugin, addLog, customParams]);
 
   // 步骤6: Roadmap关联
   const doRoadmapLink = React.useCallback(async (file: TFile): Promise<StepResult> => {
@@ -787,9 +788,21 @@ ${noteLink}
             // ignore prompt augmentation failure
           }
           break;
-        case 4:
-          result = await doGenerateMetadata(currentFile);
+        case 4: {
+          result = await doGenerateMetadata(currentFile, overrides?.prompt);
+          // Augment result with prompt info for UI initialization
+          const __raw4 = (overrides?.prompt ?? customParams[4]?.prompt ?? (plugin.settings as any).enhancedMetadataPrompt ?? '');
+          const __used4 = (typeof __raw4 === 'string' ? __raw4.trim() : '') || '';
+          result = {
+            ...result,
+            data: {
+              ...(result as any).data,
+              promptUsed: __used4,
+              settingsPrompt: (plugin.settings as any).enhancedMetadataPrompt || ''
+            }
+          } as StepResult;
           break;
+        }
         case 5:
           result = await doRoadmapLink(currentFile);
           break;
@@ -1077,6 +1090,22 @@ ${noteLink}
             new Notice('Level3 prompt saved as default');
           } catch (e: any) {
             addLog(`  Failed to save level3 prompt: ${e?.message || e}`);
+            new Notice(`Failed to save default prompt: ${e?.message || e}`);
+          }
+        }
+      }
+      // Support custom prompt for metadata generation (step 4)
+      if (currentStepIndex === 4 && typeof (params as any).prompt === 'string') {
+        const trimmed4 = ((params as any).prompt as string).trim();
+        normalized = trimmed4.length > 0 ? { prompt: trimmed4 } : {};
+        if (trimmed4.length > 0) {
+          try {
+            (plugin.settings as any).enhancedMetadataPrompt = trimmed4;
+            await (plugin as any).saveSettings?.();
+            addLog('  Metadata prompt saved as global default.');
+            new Notice('Metadata prompt saved as default');
+          } catch (e: any) {
+            addLog(`  Failed to save metadata prompt: ${e?.message || e}`);
             new Notice(`Failed to save default prompt: ${e?.message || e}`);
           }
         }

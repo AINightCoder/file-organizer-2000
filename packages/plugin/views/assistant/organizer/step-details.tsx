@@ -716,11 +716,24 @@ export const MetadataStepDetail: React.FC<StepDetailProps> = ({
   stepName,
   icon,
   result,
+  plugin,
   onApply,
   onRetry
 }) => {
   const data = result?.data;
-  // YAML 预览功能已移除
+  const [customPrompt, setCustomPrompt] = React.useState<string>('');
+
+  React.useEffect(() => {
+    const initial = (
+      (result && (result as any).data && (result as any).data.promptUsed) ||
+      (plugin && (plugin.settings as any) && (plugin.settings as any).enhancedMetadataPrompt) ||
+      ''
+    ) as string;
+    if (initial !== customPrompt) {
+      setCustomPrompt(initial);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, plugin]);
 
   return (
     <div className="step-detail p-4 bg-[--background-secondary] rounded-lg">
@@ -748,6 +761,18 @@ export const MetadataStepDetail: React.FC<StepDetailProps> = ({
 
       {/* YAML 预览功能已移除 */}
 
+      <div className="fo-mb-3">
+        <div className="fo-text-sm fo-text-[--text-muted] fo-mb-2">元数据生成 Prompt（可选）</div>
+        <textarea
+          value={customPrompt}
+          onChange={(e) => setCustomPrompt(e.target.value)}
+          placeholder="为元数据生成提供提示词，影响标题、标签、摘要等字段..."
+          className="fo-w-full fo-p-2 fo-text-sm fo-bg-[--background-primary] fo-border fo-border-[--background-modifier-border] fo-rounded fo-resize-y"
+          rows={3}
+          style={{ width: '100%', maxWidth: 'none', display: 'block', boxSizing: 'border-box', minWidth: 0 }}
+        />
+      </div>
+
       <div className="fo-flex fo-gap-2">
         <button
           onClick={onApply}
@@ -756,7 +781,7 @@ export const MetadataStepDetail: React.FC<StepDetailProps> = ({
           ✓ 应用并继续
         </button>
         <button
-          onClick={() => onRetry()}
+          onClick={() => onRetry(customPrompt && customPrompt.trim().length > 0 ? { prompt: customPrompt.trim() } : undefined)}
           className="fo-px-4 fo-py-2 fo-bg-[--background-modifier-border] fo-text-[--text-normal] fo-rounded"
         >
           🔄 重新生成
