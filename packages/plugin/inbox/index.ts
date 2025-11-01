@@ -1845,7 +1845,7 @@ async function insertBacklinkToRoadmap(
     const lines = content.split("\n");
 
     // 构建双向链接
-    const backlink = `- [[${noteFile.basename}]]`;
+    const backlink = `[[${noteFile.basename}]]`;
 
     // 检查链接是否已存在
     if (content.includes(backlink)) {
