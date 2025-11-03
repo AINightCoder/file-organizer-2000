@@ -619,7 +619,7 @@ summary: "${metadata?.summary || ''}"
       // 添加链接到Roadmap
       try {
         const noteTitle = file.basename;
-        const noteLink = `- [[${noteTitle}]]`;
+        const noteLink = `  [[${noteTitle}]]`;
         let roadmapText = await plugin.app.vault.read(roadmapFile);
 
         if (roadmapText.includes(`[[${noteTitle}]]`)) {
@@ -695,7 +695,7 @@ ${noteLink}
       } catch (insertErr: any) {
         addLog(`  ⚠️ Roadmap 插入失败：${insertErr.message}`);
         await plugin.app.vault.append(roadmapFile, `
-- [[${file.basename}]]`);
+  [[${file.basename}]]`);
       }
 
       return {

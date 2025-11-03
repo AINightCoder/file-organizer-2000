@@ -584,7 +584,7 @@ summary: "${metadata?.summary || ''}"
                 // 添加链接到Roadmap（按参考流程插入到对应模块）
                 try {
                   const noteTitle = currentFile.basename;
-                  const noteLink = `- [[${noteTitle}]]`;
+                  const noteLink = `  [[${noteTitle}]]`;
                   let roadmapText = await plugin.app.vault.read(roadmapFile);
 
                   // 如果已存在相同双链则跳过
