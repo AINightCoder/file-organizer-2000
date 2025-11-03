@@ -6,6 +6,7 @@ import { debounce } from "lodash";
 import { SectionHeader } from "../section-header";
 import { EmptyState } from "./components/empty-state";
 import { ProcessWorkflow } from "./process-workflow";
+import { SplitNoteSection } from "./split-note-section";
 import { logMessage } from "../../../someUtils";
 import { VALID_MEDIA_EXTENSIONS } from "../../../constants";
 import { logger } from "../../../services/logger";
@@ -163,6 +164,21 @@ export const AssistantView: React.FC<AssistantViewProps> = ({
         <div className="text-accent">{activeFile.basename}</div>
       </div>
 
+      {/* 笔记拆分功能 */}
+      {renderSection(
+        <SplitNoteSection
+          plugin={plugin}
+          file={activeFile}
+          content={noteContent}
+          onSplitComplete={() => {
+            // 拆分完成后刷新文件列表
+            updateActiveFile();
+          }}
+        />,
+        "Error loading split note section"
+      )}
+
+      {/* 6步工作流 */}
       {renderSection(
         <ProcessWorkflow
           plugin={plugin}
