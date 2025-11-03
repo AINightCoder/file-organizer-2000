@@ -11,6 +11,8 @@ interface AtomicNote {
   filename: string;
   content: string;
   knowledgePoint?: string;
+  chunkIndex?: number;
+  chunkTitle?: string;
 }
 
 interface SplitNoteSectionProps {
@@ -18,6 +20,141 @@ interface SplitNoteSectionProps {
   file: TFile;
   content: string;
   onSplitComplete?: () => void;
+}
+
+interface ContentChunk {
+  title: string;
+  content: string;
+  level: number;
+}
+
+// ============ 工具函数 ============
+
+/**
+ * 按标题层级智能分块
+ * @param content 笔记内容
+ * @param maxChunkSize 单块最大字符数
+ * @param minChunkSize 单块最小字符数
+ * @returns 分块后的内容数组
+ */
+function chunkByHeaders(
+  content: string,
+  maxChunkSize = 8000,
+  minChunkSize = 1000
+): ContentChunk[] {
+  const chunks: ContentChunk[] = [];
+  const lines = content.split('\n');
+  let currentChunk: ContentChunk = { title: '开始部分', content: '', level: 999 };
+
+  for (const line of lines) {
+    // 匹配 Markdown 标题 (## 或 ### 或 ####)
+    const headerMatch = line.match(/^(#{1,6})\s+(.+)/);
+
+    if (headerMatch) {
+      const level = headerMatch[1].length;
+      const title = headerMatch[2].trim();
+
+      // 遇到同级或更高级标题，且当前块满足最小长度，就切分
+      if (level <= currentChunk.level && currentChunk.content.length >= minChunkSize) {
+        chunks.push(currentChunk);
+        currentChunk = { title, content: line + '\n', level };
+      } else {
+        // 否则继续累积内容
+        currentChunk.content += line + '\n';
+        // 如果是第一次遇到标题，更新当前块的标题
+        if (currentChunk.level === 999) {
+          currentChunk.title = title;
+          currentChunk.level = level;
+        }
+      }
+    } else {
+      currentChunk.content += line + '\n';
+    }
+
+    // 强制分块：超过最大长度，在下一个标题处切分
+    if (currentChunk.content.length > maxChunkSize) {
+      // 如果已经很长，立即切分（即使没遇到标题）
+      if (currentChunk.content.length > maxChunkSize * 1.5) {
+        chunks.push(currentChunk);
+        currentChunk = { title: '继续部分', content: '', level: 999 };
+      }
+      // 否则等待下一个标题再切分（上面的逻辑会处理）
+    }
+  }
+
+  // 最后一块
+  if (currentChunk.content.trim().length > 0) {
+    chunks.push(currentChunk);
+  }
+
+  return chunks;
+}
+
+/**
+ * 两阶段处理：先规则分块，再AI原子化
+ * @param content 笔记内容
+ * @param filename 笔记文件名
+ * @param plugin FileOrganizer 插件实例
+ * @param customPrompt 自定义提示词
+ * @returns 所有原子化笔记
+ */
+async function splitLargeNote(
+  content: string,
+  filename: string,
+  plugin: FileOrganizer,
+  customPrompt: string
+): Promise<{ notes: AtomicNote[], chunks: ContentChunk[] }> {
+  const LARGE_NOTE_THRESHOLD = 10000; // 10k字符以上才分块
+
+  // 短笔记：直接AI拆分
+  if (content.length < LARGE_NOTE_THRESHOLD) {
+    const result = await plugin.aiService.splitIntoAtomicNotes({
+      content,
+      filename,
+      customPrompt
+    });
+    return { notes: result, chunks: [] };
+  }
+
+  // 长笔记：第一阶段 - 规则分块
+  logger.info(`笔记过长 (${content.length}字符)，开始分块处理...`);
+  const chunks = chunkByHeaders(content, 8000, 1000);
+  logger.info(`已分为 ${chunks.length} 个块:`, chunks.map(c => ({ title: c.title, length: c.content.length })));
+
+  // 第二阶段：对每个块调用AI拆分
+  const allNotes: AtomicNote[] = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    logger.info(`正在处理第 ${i + 1}/${chunks.length} 块: ${chunk.title}`);
+
+    try {
+      const result = await plugin.aiService.splitIntoAtomicNotes({
+        content: chunk.content,
+        filename: chunk.title || `${filename}_部分${i + 1}`,
+        customPrompt
+      });
+
+      // 给文件名添加前缀，避免不同块的重名
+      const prefixedNotes = result.map(note => ({
+        ...note,
+        filename: `${chunk.title}_${note.filename}`,
+        chunkIndex: i,
+        chunkTitle: chunk.title
+      }));
+
+      allNotes.push(...prefixedNotes);
+    } catch (err: any) {
+      logger.error(`处理块 "${chunk.title}" 失败:`, err);
+      // 继续处理其他块，不中断整个流程
+      allNotes.push({
+        filename: `${chunk.title}_处理失败`,
+        content: chunk.content,
+        knowledgePoint: `处理失败: ${err.message}`
+      });
+    }
+  }
+
+  return { notes: allNotes, chunks };
 }
 
 // ============ 主组件 ============
@@ -34,6 +171,7 @@ export const SplitNoteSection: React.FC<SplitNoteSectionProps> = ({
   const [deleteOriginal, setDeleteOriginal] = React.useState<boolean>(true);
   const [error, setError] = React.useState<string | null>(null);
   const [createdFiles, setCreatedFiles] = React.useState<string[]>([]);
+  const [chunks, setChunks] = React.useState<ContentChunk[]>([]);
 
   // 初始化提示词
   React.useEffect(() => {
@@ -65,29 +203,34 @@ export const SplitNoteSection: React.FC<SplitNoteSectionProps> = ({
   const handleSplitClick = async () => {
     setSplitState('analyzing');
     setError(null);
+    setChunks([]);
 
     try {
       const prompt = customPrompt.trim() || DEFAULT_ATOMIC_SPLIT_PROMPT;
 
       logger.info("开始分析笔记拆分...");
-      const result = await plugin.aiService.splitIntoAtomicNotes({
-        content: content,
-        filename: file.basename,
-        customPrompt: prompt
-      });
 
-      logger.info("拆分分析结果:", result);
+      // 使用两阶段处理逻辑
+      const { notes, chunks: contentChunks } = await splitLargeNote(
+        content,
+        file.basename,
+        plugin,
+        prompt
+      );
+
+      logger.info("拆分分析结果:", notes);
+      logger.info("内容分块:", contentChunks);
 
       // 判断是否需要拆分
-      if (!result || result.length === 0) {
+      if (!notes || notes.length === 0) {
         setError('AI 分析失败，未返回结果');
         setSplitState('idle');
         return;
       }
 
-      if (result.length === 1) {
+      if (notes.length === 1) {
         // 检查内容是否相同
-        const isSameContent = result[0].content.trim() === content.trim();
+        const isSameContent = notes[0].content.trim() === content.trim();
         if (isSameContent) {
           setError('AI 认为当前笔记无需拆分（已经是单一知识点）');
           setSplitState('idle');
@@ -95,7 +238,8 @@ export const SplitNoteSection: React.FC<SplitNoteSectionProps> = ({
         }
       }
 
-      setSplitResult(result);
+      setSplitResult(notes);
+      setChunks(contentChunks);
       setSplitState('preview');
     } catch (err: any) {
       logger.error("拆分分析失败:", err);
@@ -252,6 +396,7 @@ export const SplitNoteSection: React.FC<SplitNoteSectionProps> = ({
       {splitState === 'preview' && (
         <PreviewState
           splitResult={splitResult}
+          chunks={chunks}
           customPrompt={customPrompt}
           deleteOriginal={deleteOriginal}
           onPromptChange={setCustomPrompt}
@@ -335,6 +480,7 @@ const AnalyzingState: React.FC = () => (
 // Preview 状态
 const PreviewState: React.FC<{
   splitResult: AtomicNote[];
+  chunks: ContentChunk[];
   customPrompt: string;
   deleteOriginal: boolean;
   onPromptChange: (value: string) => void;
@@ -345,6 +491,7 @@ const PreviewState: React.FC<{
   error: string | null;
 }> = ({
   splitResult,
+  chunks,
   customPrompt,
   deleteOriginal,
   onPromptChange,
@@ -358,6 +505,22 @@ const PreviewState: React.FC<{
     <h3 className="fo-font-semibold fo-mb-3 fo-text-[--text-normal]">
       📄 笔记拆分 - 预览
     </h3>
+
+    {/* 分块信息提示 */}
+    {chunks.length > 0 && (
+      <div className="fo-mb-3 fo-p-3 fo-bg-blue-50 dark:fo-bg-blue-950 fo-rounded fo-border fo-border-blue-200 dark:fo-border-blue-800">
+        <div className="fo-text-blue-800 dark:fo-text-blue-200 fo-text-sm">
+          ℹ️ 笔记较长，已按标题分为 <strong>{chunks.length}</strong> 个块进行处理：
+          <ul className="fo-mt-2 fo-pl-4 fo-space-y-1">
+            {chunks.map((chunk, idx) => (
+              <li key={idx} className="fo-text-xs">
+                • {chunk.title} ({Math.round(chunk.content.length / 1000)}k字符)
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    )}
 
     <div className="fo-mb-3 fo-text-sm fo-text-[--text-muted]">
       将拆分为 {splitResult.length} 个笔记：
