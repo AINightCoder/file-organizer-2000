@@ -771,7 +771,7 @@ export default class FileOrganizer extends Plugin {
         fileName,
         folders,
         customInstructions,
-        count: 3
+        count: 6
       });
       
       logger.info("Generated folders:", suggestedFolders);

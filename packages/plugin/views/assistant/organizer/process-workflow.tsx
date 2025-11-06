@@ -338,7 +338,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       try {
         const cutoff = plugin.settings.contentCutoffChars || 1000;
         const trimmed = content.slice(0, cutoff);
-        const suggestionCount = Math.max(1, Math.min(3, level3Candidates.length || 1));
+        const suggestionCount = Math.max(1, Math.min(6, level3Candidates.length || 1));
         const l3Suggestions = await plugin.aiService.generateFolder({
           content: trimmed,
           fileName: file.basename,
