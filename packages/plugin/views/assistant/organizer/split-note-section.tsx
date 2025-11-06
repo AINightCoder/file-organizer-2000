@@ -310,17 +310,10 @@ export const SplitNoteSection: React.FC<SplitNoteSectionProps> = ({
     const skipped: string[] = [];
 
     try {
-      // 创建子文件夹
-      const splitFolderName = `${file.basename}_拆分`;
-      const splitFolderPath = file.parent ? `${file.parent.path}/${splitFolderName}` : splitFolderName;
+      // 直接使用原笔记所在的目录
+      const targetFolderPath = file.parent ? file.parent.path : '';
 
-      logger.info("创建拆分文件夹:", splitFolderPath);
-
-      try {
-        await plugin.ensureFolderExists(splitFolderPath);
-      } catch (err: any) {
-        throw new Error(`创建拆分文件夹失败：${err.message}`);
-      }
+      logger.info("保存拆分笔记到目录:", targetFolderPath);
 
       // 创建拆分后的笔记
       for (const note of splitResult) {
@@ -332,7 +325,7 @@ export const SplitNoteSection: React.FC<SplitNoteSectionProps> = ({
 
         // 清理文件名（移除非法字符）
         const sanitizedFilename = note.filename.replace(/[\\/:*?"<>|]/g, '_');
-        const newPath = `${splitFolderPath}/${sanitizedFilename}.md`;
+        const newPath = targetFolderPath ? `${targetFolderPath}/${sanitizedFilename}.md` : `${sanitizedFilename}.md`;
 
         logger.info("创建笔记:", newPath);
 
@@ -342,7 +335,9 @@ export const SplitNoteSection: React.FC<SplitNoteSectionProps> = ({
           logger.warn(`文件已存在，添加后缀: ${newPath}`);
           // 添加时间戳后缀
           const timestamp = Date.now();
-          const newPathWithSuffix = `${splitFolderPath}/${sanitizedFilename}_${timestamp}.md`;
+          const newPathWithSuffix = targetFolderPath
+            ? `${targetFolderPath}/${sanitizedFilename}_${timestamp}.md`
+            : `${sanitizedFilename}_${timestamp}.md`;
           await plugin.app.vault.create(newPathWithSuffix, note.content);
           created.push(`${sanitizedFilename}_${timestamp}`);
         } else {
@@ -375,7 +370,7 @@ export const SplitNoteSection: React.FC<SplitNoteSectionProps> = ({
 
       // 自动打开第一个笔记
       if (created.length > 0) {
-        const firstPath = `${splitFolderPath}/${created[0]}.md`;
+        const firstPath = targetFolderPath ? `${targetFolderPath}/${created[0]}.md` : `${created[0]}.md`;
         const firstFile = plugin.app.vault.getAbstractFileByPath(firstPath);
         if (firstFile instanceof TFile) {
           await plugin.app.workspace.getLeaf().openFile(firstFile);
@@ -442,7 +437,7 @@ export const SplitNoteSection: React.FC<SplitNoteSectionProps> = ({
       {splitState === 'completed' && (
         <CompletedState
           createdFiles={createdFiles}
-          splitFolderPath={file.parent ? `${file.parent.path}/${file.basename}_拆分` : `${file.basename}_拆分`}
+          splitFolderPath={file.parent ? file.parent.path : ''}
           onReset={handleReset}
         />
       )}
@@ -648,7 +643,7 @@ const CompletedState: React.FC<{
         ))}
       </ul>
       <div className="fo-text-sm fo-text-[--text-muted] fo-mt-2">
-        存放位置：{splitFolderPath}
+        存放位置：{splitFolderPath || '根目录'}
       </div>
     </div>
 
