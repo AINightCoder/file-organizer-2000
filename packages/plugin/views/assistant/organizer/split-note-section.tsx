@@ -1,5 +1,5 @@
 import * as React from "react";
-import { TFile, Notice } from "obsidian";
+import { TFile, Notice, HeadingCache } from "obsidian";
 import FileOrganizer from "../../../index";
 import { logger } from "../../../services/logger";
 
@@ -57,131 +57,161 @@ function countWords(text: string): number {
 }
 
 /**
- * 找到文档中所有存在的标题级别
+ * 剥离 YAML Frontmatter
  * @param content 笔记内容
- * @returns 按级别排序的数组（如[1,2,3]），如果没有标题则返回空数组
+ * @returns 去除 frontmatter 后的纯正文内容
  */
-function findAllHeaderLevels(content: string): number[] {
+function stripFrontmatter(content: string): string {
   const lines = content.split('\n');
-  const levels = new Set<number>();
 
-  for (const line of lines) {
-    const headerMatch = line.match(/^(#{1,6})\s+(.+)/);
-    if (headerMatch) {
-      levels.add(headerMatch[1].length);
+  // 检查是否以 --- 开头
+  if (lines.length > 0 && lines[0].trim() === '---') {
+    // 查找第二个 ---
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim() === '---') {
+        // 返回 frontmatter 之后的内容
+        return lines.slice(i + 1).join('\n');
+      }
     }
   }
 
-  return Array.from(levels).sort((a, b) => a - b);
+  // 没有 frontmatter，返回原内容
+  return content;
 }
 
 /**
- * 找到文档中最高级别的标题（数字最小）
- * @param content 笔记内容
- * @returns 最高级别（1-6），如果没有标题则返回null
+ * 找到文档中所有存在的标题级别
+ * @param headings 标题缓存列表
+ * @returns 按级别排序的数组（如[1,2,3]），如果没有标题则返回空数组
  */
-function findTopHeaderLevel(content: string): number | null {
-  const levels = findAllHeaderLevels(content);
-  return levels.length > 0 ? levels[0] : null;
+function findAllHeaderLevels(headings: HeadingCache[]): number[] {
+  const levels = new Set<number>();
+  for (const heading of headings) {
+    levels.add(heading.level);
+  }
+  return Array.from(levels).sort((a, b) => a - b);
 }
 
 /**
  * 按指定级别标题拆分笔记
  * @param content 笔记内容
+ * @param headings 标题缓存列表
  * @param targetLevel 目标标题级别
  * @returns 拆分后的章节数组
  */
 function splitByHeaderLevel(
   content: string,
+  headings: HeadingCache[],
   targetLevel: number
 ): ContentChunk[] {
   const chunks: ContentChunk[] = [];
-  const lines = content.split('\n');
-  let currentChunk: ContentChunk | null = null;
 
-  for (const line of lines) {
-    const headerMatch = line.match(/^(#{1,6})\s+(.+)/);
+  // 过滤出目标级别的标题
+  const targetHeadings = headings.filter(h => h.level === targetLevel);
 
-    // 遇到目标级别标题，开始新章节
-    if (headerMatch && headerMatch[1].length === targetLevel) {
-      if (currentChunk) {
-        chunks.push(currentChunk);
-      }
-      const title = headerMatch[2].trim();
-      currentChunk = { title, content: line + '\n', level: targetLevel };
-    } else {
-      // 累积内容到当前章节
-      if (!currentChunk) {
-        // 文档开头没有标题的内容
-        currentChunk = { title: '前言', content: line + '\n', level: targetLevel };
-      } else {
-        currentChunk.content += line + '\n';
-      }
-    }
+  if (targetHeadings.length === 0) {
+    return [{ title: '全文', content, level: 0 }];
   }
 
-  // 添加最后一个章节
-  if (currentChunk) {
-    chunks.push(currentChunk);
+  // 按位置排序
+  targetHeadings.sort((a, b) => a.position.start.offset - b.position.start.offset);
+
+  for (let i = 0; i < targetHeadings.length; i++) {
+    const currentHeading = targetHeadings[i];
+    const nextHeading = targetHeadings[i + 1];
+
+    // 提取从当前标题到下一个标题之间的内容
+    const startOffset = currentHeading.position.start.offset;
+    const endOffset = nextHeading
+      ? nextHeading.position.start.offset
+      : content.length;
+
+    const chunkContent = content.slice(startOffset, endOffset);
+
+    chunks.push({
+      title: currentHeading.heading,
+      content: chunkContent,
+      level: targetLevel
+    });
+  }
+
+  // 如果第一个标题前有内容，作为"前言"
+  if (targetHeadings.length > 0 && targetHeadings[0].position.start.offset > 0) {
+    const prologueContent = content.slice(0, targetHeadings[0].position.start.offset);
+    if (prologueContent.trim().length > 0) {
+      chunks.unshift({
+        title: '前言',
+        content: prologueContent,
+        level: targetLevel
+      });
+    }
   }
 
   return chunks;
 }
 
 /**
- * 按最高级别标题拆分笔记，如果只有一个章节则尝试下一级，合并太短的章节
+ * 按最高级别标题拆分笔记，如果合并后只有一个章节则尝试下一级，合并太短的章节
  * @param content 笔记内容
+ * @param headings 标题缓存列表
  * @param minChunkWords 单个章节最小词数（少于此值会和下一章合并）
  * @returns 拆分后的章节数组
  */
 function splitByTopHeaders(
   content: string,
+  headings: HeadingCache[],
   minChunkWords = 3000
 ): ContentChunk[] {
   // 找到所有存在的标题级别
-  const allLevels = findAllHeaderLevels(content);
+  const allLevels = findAllHeaderLevels(headings);
 
   // 如果没有标题，整个文档作为一个块
   if (allLevels.length === 0) {
     return [{ title: '全文', content, level: 0 }];
   }
 
-  // 尝试从最高级别开始拆分，如果只有1个章节则尝试下一级
-  let chunks: ContentChunk[] = [];
+  // 尝试从最高级别开始拆分，如果合并后只有1个章节则尝试下一级
+  let mergedChunks: ContentChunk[] = [];
   for (const level of allLevels) {
-    chunks = splitByHeaderLevel(content, level);
+    const chunks = splitByHeaderLevel(content, headings, level);
 
-    // 如果拆分出多个章节，就使用这个级别
-    if (chunks.length > 1) {
-      logger.info(`使用${level}级标题拆分，得到${chunks.length}个章节`);
+    // 如果只拆分出1个章节，尝试下一级
+    if (chunks.length <= 1) {
+      continue;
+    }
+
+    // 合并太短的章节
+    mergedChunks = [];
+    let i = 0;
+    while (i < chunks.length) {
+      let current = chunks[i];
+
+      // 如果当前章节太短，且不是最后一章，则和下一章合并
+      while (i < chunks.length - 1 && countWords(current.content) < minChunkWords) {
+        const next = chunks[i + 1];
+        current = {
+          title: `${current.title}+${next.title}`,
+          content: current.content + next.content,
+          level: current.level
+        };
+        i++;
+      }
+
+      mergedChunks.push(current);
+      i++;
+    }
+
+    // 如果合并后有多个章节，就使用这个级别
+    if (mergedChunks.length > 1) {
+      logger.info(`使用${level}级标题拆分，合并后得到${mergedChunks.length}个章节`);
       break;
     }
   }
 
   // 如果所有级别都试过了还是只有1个章节，返回原样
-  if (chunks.length <= 1) {
-    return chunks;
-  }
-
-  // 合并太短的章节
-  const mergedChunks: ContentChunk[] = [];
-  let i = 0;
-  while (i < chunks.length) {
-    let current = chunks[i];
-
-    // 如果当前章节太短，且不是最后一章，则和下一章合并
-    while (i < chunks.length - 1 && countWords(current.content) < minChunkWords) {
-      const next = chunks[i + 1];
-      current = {
-        title: `${current.title}+${next.title}`,
-        content: current.content + next.content,
-        level: current.level
-      };
-      i++;
-    }
-
-    mergedChunks.push(current);
-    i++;
+  if (mergedChunks.length <= 1) {
+    // 返回未拆分的原始内容
+    return [{ title: '全文', content, level: 0 }];
   }
 
   return mergedChunks;
@@ -189,24 +219,57 @@ function splitByTopHeaders(
 
 /**
  * 按标题拆分笔记为独立文件
+ * @param plugin 插件实例
+ * @param file 笔记文件
  * @param content 笔记内容
  * @param originalFilename 原笔记文件名（不含扩展名）
  * @returns 拆分后的笔记和章节信息
  */
 function splitNoteByHeaders(
+  plugin: FileOrganizer,
+  file: TFile,
   content: string,
   originalFilename: string
 ): { notes: AtomicNote[], chunks: ContentChunk[] } {
   logger.info(`开始按标题拆分笔记...`);
 
+  // 获取文件的元数据缓存（包含标题信息）
+  const metadata = plugin.app.metadataCache.getFileCache(file);
+  if (!metadata || !metadata.headings || metadata.headings.length === 0) {
+    logger.warn('无法获取标题信息或文档无标题');
+    return { notes: [], chunks: [] };
+  }
+
+  // 剥离 frontmatter
+  const contentWithoutFrontmatter = stripFrontmatter(content);
+  logger.info(`已剥离 frontmatter，原文档 ${countWords(content)} 词，处理后 ${countWords(contentWithoutFrontmatter)} 词`);
+
+  // 获取标题列表（需要调整位置偏移量，因为去除了 frontmatter）
+  const frontmatterOffset = content.length - contentWithoutFrontmatter.length;
+  const adjustedHeadings: HeadingCache[] = metadata.headings.map(h => ({
+    ...h,
+    position: {
+      start: {
+        ...h.position.start,
+        offset: h.position.start.offset - frontmatterOffset
+      },
+      end: {
+        ...h.position.end,
+        offset: h.position.end.offset - frontmatterOffset
+      }
+    }
+  })).filter(h => h.position.start.offset >= 0); // 过滤掉在 frontmatter 中的标题
+
+  logger.info(`找到 ${adjustedHeadings.length} 个标题`);
+
   // 根据文档总词数动态决定合并阈值
-  const totalWords = countWords(content);
-  const minChunkWords = totalWords < 3000 ? 500 : 3000;
+  const totalWords = countWords(contentWithoutFrontmatter);
+  const minChunkWords = totalWords < 3000 ? 500 : 1500; // 优化阈值
 
   logger.info(`文档总词数: ${totalWords}, 使用合并阈值: ${minChunkWords}`);
 
   // 按最高级别标题拆分+合并短章节
-  const chunks = splitByTopHeaders(content, minChunkWords);
+  const chunks = splitByTopHeaders(contentWithoutFrontmatter, adjustedHeadings, minChunkWords);
   logger.info(`已分为 ${chunks.length} 个章节:`, chunks.map(c => ({ title: c.title, words: countWords(c.content) })));
 
   // 将每个章节转换为笔记，文件名添加原笔记名前缀
@@ -262,26 +325,21 @@ export const SplitNoteSection: React.FC<SplitNoteSectionProps> = ({
     try {
       logger.info("开始按标题拆分笔记...");
 
-      // 使用新的规则拆分逻辑（传入原文件名）
-      const { notes, chunks: contentChunks } = splitNoteByHeaders(content, file.basename);
+      // 使用新的规则拆分逻辑（传入 plugin 和 file）
+      const { notes, chunks: contentChunks } = splitNoteByHeaders(plugin, file, content, file.basename);
 
       logger.info("拆分结果:", notes);
       logger.info("章节信息:", contentChunks);
 
       // 判断是否可以拆分
       if (!notes || notes.length === 0) {
-        setError('拆分失败，未找到有效章节');
+        setError('拆分失败，未找到有效章节或文档无标题');
         setSplitState('idle');
         return;
       }
 
       if (notes.length === 1) {
-        const allLevels = findAllHeaderLevels(content);
-        if (allLevels.length === 0) {
-          setError('当前笔记无法拆分（没有找到任何标题）');
-        } else {
-          setError('当前笔记无法拆分（所有标题级别都只有一个标题）');
-        }
+        setError('当前笔记无法拆分（所有标题级别都只有一个标题，或合并后只剩一个章节）');
         setSplitState('idle');
         return;
       }
