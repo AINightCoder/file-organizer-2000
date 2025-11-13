@@ -272,9 +272,9 @@ function splitNoteByHeaders(
   const chunks = splitByTopHeaders(contentWithoutFrontmatter, adjustedHeadings, minChunkWords);
   logger.info(`已分为 ${chunks.length} 个章节:`, chunks.map(c => ({ title: c.title, words: countWords(c.content) })));
 
-  // 将每个章节转换为笔记，文件名添加原笔记名前缀
+  // 将每个章节转换为笔记，文件名按序号命名
   const notes: AtomicNote[] = chunks.map((chunk, idx) => ({
-    filename: `${originalFilename}_${chunk.title}`,
+    filename: `${originalFilename}_${idx + 1}`,
     content: chunk.content,
     knowledgePoint: `第${idx + 1}部分`,
     chunkIndex: idx,
