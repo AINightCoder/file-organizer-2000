@@ -409,7 +409,24 @@ export const SplitNoteSection: React.FC<SplitNoteSectionProps> = ({
         throw new Error('未成功创建任何笔记文件');
       }
 
-      // 处理原笔记
+      // 先打开第一个笔记（在删除原笔记之前）
+      if (created.length > 0) {
+        // 等待 vault 更新缓存
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        const firstPath = targetFolderPath ? `${targetFolderPath}/${created[0]}.md` : `${created[0]}.md`;
+        logger.info("尝试打开第一个笔记:", firstPath);
+
+        const firstFile = plugin.app.vault.getAbstractFileByPath(firstPath);
+        if (firstFile instanceof TFile) {
+          await plugin.app.workspace.getLeaf().openFile(firstFile);
+          logger.info("成功打开第一个笔记");
+        } else {
+          logger.warn("无法找到第一个笔记文件:", firstPath);
+        }
+      }
+
+      // 然后处理原笔记
       if (deleteOriginal) {
         logger.info("删除原笔记:", file.path);
         try {
@@ -425,15 +442,6 @@ export const SplitNoteSection: React.FC<SplitNoteSectionProps> = ({
 
       // 通知父组件刷新
       onSplitComplete?.();
-
-      // 自动打开第一个笔记
-      if (created.length > 0) {
-        const firstPath = targetFolderPath ? `${targetFolderPath}/${created[0]}.md` : `${created[0]}.md`;
-        const firstFile = plugin.app.vault.getAbstractFileByPath(firstPath);
-        if (firstFile instanceof TFile) {
-          await plugin.app.workspace.getLeaf().openFile(firstFile);
-        }
-      }
 
       // 显示结果通知
       let noticeMsg = `✅ 已拆分为 ${created.length} 个笔记`;
